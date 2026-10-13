@@ -277,6 +277,21 @@
   }
   .t2s .foot button.primary { background: var(--ink); color: var(--paper); }
   .t2s .foot button.primary:hover { background: var(--terracotta); color: var(--ink); }
+  /* AgentLoop 切换：范式选择列表（复用 t2s 弹层外观） */
+  .t2s .pl-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+  .t2s .pl-item {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer;
+    font: 600 14px var(--comic); color: var(--ink); background: var(--cream);
+    border: 3px solid var(--sand); border-radius: var(--shape1);
+  }
+  .t2s .pl-item:hover { border-color: var(--ink); }
+  .t2s .pl-item.on { background: var(--yellow); border-color: var(--ink); }
+  .t2s .pl-item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .t2s .pl-item .tag {
+    flex: none; padding: 1px 8px; font-size: 11px; background: var(--ink); color: var(--paper);
+    border-radius: 999px;
+  }
+  .t2s .pl-hint { padding: 10px 2px; font: 600 13px var(--comic); color: var(--dim); }
 
   /* ---------- toast ---------- */
   .toast {
@@ -353,6 +368,16 @@
       </div>
     </div>
   </div>
+  <!-- AgentLoop 切换弹层：列出 paradigms 目录下的范式，点选即热切换（复用 t2s 外观） -->
+  <div class="t2s-mask" id="plMask">
+    <div class="t2s">
+      <h3>切换 AgentLoop</h3>
+      <div class="pl-list" id="plList"></div>
+      <div class="foot">
+        <button type="button" id="plCancel">取消</button>
+      </div>
+    </div>
+  </div>
   <div class="toast" id="toast"></div>
 
 <script>
@@ -369,6 +394,7 @@
   var ICON_UP = SVG_HEAD + '<path d="m18 15-6-6-6 6"/></svg>';
   var ICON_BRANCH = SVG_HEAD + '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>';
   var ICON_BOOK = SVG_HEAD + '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>';
+  var ICON_LOOP = SVG_HEAD + '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
 
   /* ---------- 宿主桥 ---------- */
   var seq = 0;
@@ -696,6 +722,7 @@
     bar.appendChild(actBtn(branchBusy, ICON_BRANCH, '会话分支', doBranch));
     bar.appendChild(actBtn(compressBusy, ICON_BRAIN, '记忆压缩', compressMemory));
     bar.appendChild(actBtn(false, ICON_BOOK, 'trace2skill', openTraceModal));
+    bar.appendChild(actBtn(false, ICON_LOOP, '切换 AgentLoop', openParadigmModal));
     return bar;
   }
   function renderActions() {
@@ -753,6 +780,73 @@
   document.getElementById('t2sCreate').addEventListener('click', function () { setT2sType('create'); });
   document.getElementById('t2sCancel').addEventListener('click', closeTraceModal);
   t2sMask.addEventListener('click', function (e) { if (e.target === t2sMask) closeTraceModal(); });
+
+  /* ---------- AgentLoop（paradigm）切换：读列表 → 点选热切换 ---------- */
+  var plMask = document.getElementById('plMask');
+  var plListEl = document.getElementById('plList');
+  var plBusy = false;
+  function closeParadigmModal() { plMask.classList.remove('on'); }
+  function openParadigmModal() {
+    if (!state.sessionId) { toast('请先选择会话'); return; }
+    plListEl.innerHTML = '<div class="pl-hint">加载中…</div>';
+    plMask.classList.add('on');
+    var sid = encodeURIComponent(state.sessionId);
+    Promise.all([
+      fetch('/api/paradigms').then(function (r) { return r.json(); }).catch(function () { return {}; }),
+      fetch('/api/sessions/' + sid + '/paradigm').then(function (r) { return r.json(); }).catch(function () { return {}; })
+    ]).then(function (res) {
+      renderParadigmList(((res[0] || {}).files) || [], String((res[1] || {}).paradigm || ''));
+    });
+  }
+  function renderParadigmList(files, current) {
+    plListEl.innerHTML = '';
+    // 空串代表「默认范式」（PARADIGM.yaml）；列表里的默认项由这一项代表，避免重复
+    var options = [{ name: '', label: '默认（PARADIGM）' }];
+    files.forEach(function (f) {
+      if (!f || f.is_default) return;
+      options.push({ name: f.name, label: f.name });
+    });
+    options.forEach(function (opt) {
+      var on = String(opt.name) === current;
+      var item = document.createElement('div');
+      item.className = 'pl-item' + (on ? ' on' : '');
+      var nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = opt.label;
+      item.appendChild(nm);
+      if (on) {
+        var tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = '当前';
+        item.appendChild(tag);
+      }
+      item.addEventListener('click', function () { pickParadigm(opt.name); });
+      plListEl.appendChild(item);
+    });
+  }
+  function pickParadigm(name) {
+    if (plBusy) return;
+    plBusy = true;
+    fetch('/api/sessions/' + encodeURIComponent(state.sessionId) + '/paradigm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paradigm: name || '' })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) throw new Error((d && d.detail) || ('HTTP ' + r.status));
+        return d;
+      });
+    }).then(function () {
+      plBusy = false;
+      closeParadigmModal();
+      toast(name ? ('已切换到 ' + name) : '已切回默认 AgentLoop');
+    }).catch(function (e) {
+      plBusy = false;
+      toast(String((e && e.message) || e || '切换失败'));
+    });
+  }
+  document.getElementById('plCancel').addEventListener('click', closeParadigmModal);
+  plMask.addEventListener('click', function (e) { if (e.target === plMask) closeParadigmModal(); });
   document.getElementById('t2sOk').addEventListener('click', function () {
     if (t2sBusy) return;
     var name = document.getElementById('t2sName').value.trim();
