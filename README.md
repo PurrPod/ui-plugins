@@ -19,7 +19,7 @@ UI Plugin（UI 插件）是 PurrCat 极简模式宿主（`ui/web-minimal`）中�
 ## 2. 仓库架构设计
 
 ```text
-ui-plugin/
+ui-plugins/
 ├── .github/workflows/   # CI/CD 自动化构建流水线
 ├── scripts/             # 注册表构建与校验脚本
 ├── images/              # 插件展示图片（可选，供 registry 的 image 字段引用）
@@ -102,7 +102,7 @@ plugins/doodle-chat/
 
 * 展示图片统一放在仓库根目录的 `images/` 下，命名为 `<plugin-name>.png`（推荐 16:9 或 1:1）。
 * 在 `plugin.json` 的 `image` 中填写相对路径 `images/<plugin-name>.png`，构建脚本会自动把它补全为
-  `https://raw.githubusercontent.com/PurrPod/ui-plugin/main/images/<plugin-name>.png` 写入注册表条目。
+  `https://raw.githubusercontent.com/PurrPod/ui-plugins/main/images/<plugin-name>.png` 写入注册表条目。
 * 暂时没有图片时保持 `image: ""` 即可，市场界面会渲染灰色占位块。**后续要求插件投稿时顺带提交图片。**
 
 ---

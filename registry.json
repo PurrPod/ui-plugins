@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "repository": "https://github.com/PurrPod/ui-plugin",
+  "repository": "https://github.com/PurrPod/ui-plugins",
   "plugins": [
     {
       "name": "doodle-chat",

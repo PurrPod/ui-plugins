@@ -21,8 +21,8 @@ import sys
 
 REGISTRY_FILE = "registry.json"
 README_FILE = "README.md"
-REPO_URL = "https://github.com/PurrPod/ui-plugin"
-RAW_BASE = "https://raw.githubusercontent.com/PurrPod/ui-plugin/main"
+REPO_URL = "https://github.com/PurrPod/ui-plugins"
+RAW_BASE = "https://raw.githubusercontent.com/PurrPod/ui-plugins/main"
 
 PLUGINS_DIR = "plugins"
 
