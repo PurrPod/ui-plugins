@@ -22,14 +22,14 @@ UI Plugin（UI 插件）是 PurrCat 极简模式宿主（`ui/web-minimal`）中�
 ui-plugins/
 ├── .github/workflows/   # CI/CD 自动化构建流水线
 ├── scripts/             # 注册表构建与校验脚本
-├── images/              # 插件展示图片（可选，供 registry 的 image 字段引用）
 ├── registry.json        # 全局注册表 (由 Action 自动生成)
 ├── README.md            # 说明文档与插件列表 (由 Action 自动更新)
 │
 └── plugins/             # 官方 UI 插件 (源码直接在本仓库维护)
     └── <plugin-name>/   # 每个插件一个独立文件夹
         ├── plugin.json  # 插件描述文件 (id / name / description / slot / entry / root / image / dependency / configSchema)
-        └── index.html   # 插件入口页面（与 plugin.json 的 entry 对应）
+        ├── index.html   # 插件入口页面（与 plugin.json 的 entry 对应）
+        └── image.png    # （可选）插件展示图，随插件一起维护
 ```
 
 ---
@@ -41,9 +41,9 @@ ui-plugins/
 <!-- PLUGINS:START -->
 | 插件名 (Install ID) | 描述 | 图片 |
 | :--- | :--- | :--- |
-| `doodle-chat` | 手绘涂鸦风格的会话面板：照搬完整模式 ChatPage 的聊天框与消息气泡排版（用户气泡右对齐、助手气泡带头像标签、思考/工具气泡内联，底部为手写输入框与发送按钮）。 | — |
-| `doodle-panel-shell` | 手绘涂鸦风格的面板容器（入驻 panel-container 区域）：顶部为涂鸦标签条（自动收纳全部 panel 区域插件），下方展台为每个面板插件各驻留一个独立 iframe（切换仅显隐、不重载），并负责把子插件与宿主之间的消息双向中继。 | — |
-| `doodle-session-bar` | 手绘涂鸦风格的会话列表：把完整模式的「切换会话」列表与「待审批」列表合并成同一套涂鸦卡片风格，统一排版（会话卡片含行内重命名/删除，审批卡片含类型标签、理由展开、反馈与批准/拒绝）。 | — |
+| `doodle-chat` | 手绘涂鸦风格的会话面板：照搬完整模式 ChatPage 的聊天框与消息气泡排版（用户气泡右对齐、助手气泡带头像标签、思考/工具气泡内联，底部为手写输入框与发送按钮）。 | ✅ |
+| `doodle-panel-shell` | 手绘涂鸦风格的面板容器（入驻 panel-container 区域）：顶部为涂鸦标签条（自动收纳全部 panel 区域插件），下方展台为每个面板插件各驻留一个独立 iframe（切换仅显隐、不重载），并负责把子插件与宿主之间的消息双向中继。 | ✅ |
+| `doodle-session-bar` | 手绘涂鸦风格的会话列表：把完整模式的「切换会话」列表与「待审批」列表合并成同一套涂鸦卡片风格，统一排版（会话卡片含行内重命名/删除，审批卡片含类型标签、理由展开、反馈与批准/拒绝）。 | ✅ |
 <!-- PLUGINS:END -->
 
 ---
@@ -79,7 +79,7 @@ ui-plugins/
 * **`icon`** (必填): 宿主侧栏 / 设置面板用图标（内联 SVG 字符串或内置图标名）。
 * **`slot`** (必填): 插件入驻区域声明，本仓库统一为 `{ "area": "<区域>" }`。
 * **`entry`** (必填): 插件入口文件（须真实存在于文件夹内）。
-* **`image`** (可选): 展示图片位。为空串表示暂无图片；非空时可以是完整 URL，也可以是**仓库内相对路径**（如 `images/<name>.png`），构建脚本会自动补全为 raw 绝对 URL 写入注册表。
+* **`image`** (可选): 展示图片位。为空串表示暂无图片；非空时可为完整 URL，或**插件自己文件夹内的相对文件名**（如 `image.png`），构建脚本会自动补全为 raw 绝对 URL 写入注册表，并把该图**排除出安装清单**（不下载到用户插件根）。
 * **`root`** (必填): 期望放置位置，取值 `user` / `sandbox` / `builtin`。市场安装统一为 `user`（用户插件根）。
 * **`dependency`** (必填): 依赖声明数组，元素形如 `{ "type": "<类型>", "id": "<安装标识>" }`；`type` 白名单为 `skill` / `plugin` / `mcp` / `agentloop` / `sensor` / `graph`。无依赖时为 `[]`。
 * **`configSchema`** (可选): 插件可配置项声明（宿主设置面板据此渲染）。
@@ -100,9 +100,10 @@ plugins/doodle-chat/
 
 ## 5. 图片位与上传规范
 
-* 展示图片统一放在仓库根目录的 `images/` 下，命名为 `<plugin-name>.png`（推荐 16:9 或 1:1）。
-* 在 `plugin.json` 的 `image` 中填写相对路径 `images/<plugin-name>.png`，构建脚本会自动把它补全为
-  `https://raw.githubusercontent.com/PurrPod/ui-plugins/main/images/<plugin-name>.png` 写入注册表条目。
+* 展示图放在**每个插件自己的文件夹里**（与 `plugin.json` 同级），推荐命名 `image.png`（推荐 16:9 或 1:1）。
+* 在 `plugin.json` 的 `image` 中填写该文件名（相对插件文件夹），如 `"image": "image.png"`；构建脚本会自动补全为
+  `https://raw.githubusercontent.com/PurrPod/ui-plugins/main/plugins/<plugin-name>/image.png` 写入注册表条目。
+* 展示图属仓库侧素材，**不会进入安装清单**（`files`），因此不会被下载到用户插件根 `~/.purrcat/webmin-plugins/`。
 * 暂时没有图片时保持 `image: ""` 即可，市场界面会渲染灰色占位块。**后续要求插件投稿时顺带提交图片。**
 
 ---
@@ -112,11 +113,11 @@ plugins/doodle-chat/
 1. 在 `plugins/` 目录下新建 `<plugin-name>/` 文件夹，包含：
    * `plugin.json`：包含上述全部必填字段的插件描述文件；
    * `index.html`（或 `plugin.json` 中 `entry` 指向的文件）：插件页面。
-   * （可选）`images/<plugin-name>.png`：展示图片。
+   * （可选）`image.png`：插件展示图，与 `plugin.json` 同级。
 2. 提交 Pull Request。CI 会自动校验：
    * 文件夹名与 `plugin.json` 的 `id` 一致；
    * `description` / `description-en` / `root` / `entry` 齐备且合法；
-   * `entry` 指向的文件真实存在；
+   * `entry` 指向的文件真实存在；`image` 非空时其文件须存在于插件文件夹内；
    * `dependency` 类型在白名单内。
 
 PR 审核通过并合并后，流水线将自动把所有插件合并为全局注册表 `registry.json`，并重写本文档的插件清单。

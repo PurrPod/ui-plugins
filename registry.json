@@ -6,7 +6,7 @@
       "name": "doodle-chat",
       "description": "Hand-drawn doodle chat panel for the session area: reproduces the complete-mode ChatPage layout with right-aligned user bubbles, assistant bubbles carrying an avatar label, inline reasoning/tool bubbles, and a handwritten input box with a send button at the bottom.",
       "description-zh": "手绘涂鸦风格的会话面板：照搬完整模式 ChatPage 的聊天框与消息气泡排版（用户气泡右对齐、助手气泡带头像标签、思考/工具气泡内联，底部为手写输入框与发送按钮）。",
-      "image": "",
+      "image": "https://raw.githubusercontent.com/PurrPod/ui-plugins/main/plugins/doodle-chat/image.png",
       "enabled": true,
       "root": "user",
       "files": [
@@ -19,7 +19,7 @@
       "name": "doodle-panel-shell",
       "description": "Hand-drawn doodle panel container that lives in the panel-container area: a doodle tab strip hosts every panel-area plugin, each rendered in its own persistent iframe (show/hide only, never reloaded), and relays messages between child plugins and the host.",
       "description-zh": "手绘涂鸦风格的面板容器（入驻 panel-container 区域）：顶部为涂鸦标签条（自动收纳全部 panel 区域插件），下方展台为每个面板插件各驻留一个独立 iframe（切换仅显隐、不重载），并负责把子插件与宿主之间的消息双向中继。",
-      "image": "",
+      "image": "https://raw.githubusercontent.com/PurrPod/ui-plugins/main/plugins/doodle-panel-shell/image.png",
       "enabled": true,
       "root": "user",
       "files": [
@@ -32,7 +32,7 @@
       "name": "doodle-session-bar",
       "description": "Hand-drawn doodle session list that merges the session switcher and the pending-approval list into one unified doodle card style: session cards support inline rename/delete, approval cards carry a type tag, an expandable reason, feedback and approve/reject actions.",
       "description-zh": "手绘涂鸦风格的会话列表：把完整模式的「切换会话」列表与「待审批」列表合并成同一套涂鸦卡片风格，统一排版（会话卡片含行内重命名/删除，审批卡片含类型标签、理由展开、反馈与批准/拒绝）。",
-      "image": "",
+      "image": "https://raw.githubusercontent.com/PurrPod/ui-plugins/main/plugins/doodle-session-bar/image.png",
       "enabled": true,
       "root": "user",
       "files": [

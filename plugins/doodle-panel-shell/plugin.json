@@ -6,7 +6,7 @@
   "icon": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4.5' width='18' height='15' rx='3.5'/><path d='M3 9h18'/><path d='M6.5 7h.01M9.5 7h.01'/></svg>",
   "slot": { "area": "panel-container" },
   "entry": "index.html",
-  "image": "",
+  "image": "image.png",
   "root": "user",
   "dependency": [],
   "configSchema": [

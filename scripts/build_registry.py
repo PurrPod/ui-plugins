@@ -9,10 +9,10 @@
   name          = 文件夹名（必须与 plugin.json 的 id 一致）
   description   = plugin.json 的 description-en（英文，市场用）
   description-zh= plugin.json 的 description（中文，宿主设置面板用）
-  image         = plugin.json 的 image（可为空串；相对路径自动补全为 raw 绝对 URL）
+  image         = plugin.json 的 image（可为空串；为插件文件夹内的相对文件名，如 preview.png，自动补全为 raw 绝对 URL）
   enabled       = 固定 true（UI 插件无启用开关，宿主扫描即生效）
   root          = plugin.json 的 root（期望放置位置：user / sandbox / builtin）
-  files         = 插件文件夹内全部文件的相对路径（递归、posix 风格）
+  files         = 插件文件夹内全部文件的相对路径（递归、posix 风格；展示图不计入）
   dependency    = plugin.json 的 dependency 归一化后 [{type,id}]（白名单见 DEP_TYPES）
 """
 import json
@@ -79,12 +79,13 @@ def normalize_dependency(raw, folder):
 
 
 def resolve_image(image, folder):
+    """把展示图解析为 raw 绝对 URL：完整 URL 原样返回；否则按插件文件夹内的相对路径补全。"""
     image = str(image or "").strip()
     if not image:
         return ""
     if image.startswith(("http://", "https://")):
         return image
-    return f"{RAW_BASE}/{image.lstrip('/')}"
+    return f"{RAW_BASE}/{PLUGINS_DIR}/{folder}/{image.lstrip('/')}"
 
 
 def build_entry(folder_name):
@@ -116,17 +117,30 @@ def build_entry(folder_name):
     if not str(desc.get("entry") or "").strip():
         fail(f"[{folder}/plugin.json] 缺少 'entry'")
 
-    files = list_plugin_files(folder)
-    if "plugin.json" not in files:
+    all_files = list_plugin_files(folder)
+    if "plugin.json" not in all_files:
         fail(f"[{folder}] 插件文件夹缺少 plugin.json")
-    if not str(desc.get("entry", "")).replace("\\", "/") in files:
+    if not str(desc.get("entry", "")).replace("\\", "/") in all_files:
         fail(f"[{folder}] 'entry' 指向的文件不存在: {desc.get('entry')}")
+
+    image_raw = str(desc.get("image") or "").strip()
+    image_rel = image_raw.lstrip("/")
+    image_is_remote = image_raw.startswith(("http://", "https://"))
+    if image_raw and not image_is_remote and image_rel not in all_files:
+        fail(
+            f"[{folder}/plugin.json] 'image' 指向的文件不在插件文件夹内: {image_raw}"
+        )
+
+    # 展示图属仓库侧素材，不进安装清单（运行时无需下载到用户插件根）
+    files = [
+        f for f in all_files if image_is_remote or not image_rel or f != image_rel
+    ]
 
     return {
         "name": pid,
         "description": desc["description-en"],
         "description-zh": desc["description"],
-        "image": resolve_image(desc.get("image"), folder),
+        "image": resolve_image(image_raw, folder_name),
         "enabled": True,
         "root": root,
         "files": files,
