@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>涂鸦会话</title>
+<style>
+  /* 手绘涂鸦配色：照搬完整模式 tailwind 里的 cream/ink/terracotta 及辅助色 */
+  :root {
+    --cream: #FAF8F5;
+    --ink: #1A1A1A;
+    --terracotta: #D47A5A;
+    --paper: #FFFFFF;
+    --sand: #E8E5DF;
+    --dim: #8a8578;
+    --yellow: #EBCB8B;
+    --green: #a3be8c;
+    --blue: #D8E2DC;
+    --sky: #88c0d0;
+    --red: #bf616a;
+    --comic: "Comic Sans MS", "Segoe Print", "Bradley Hand", cursive;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    /* 完整模式 ChatShared 的三个手绘圆角 */
+    --shape1: 255px 15px 225px 15px / 15px 225px 15px 255px;
+    --shape2: 15px 225px 15px 255px / 255px 15px 225px 15px;
+    --shape3: 225px 15px 255px 15px / 15px 255px 15px 225px;
+    --shadow6: 6px 6px 0 0 rgba(26, 26, 26, 1);
+    --shadow4: 4px 4px 0 0 rgba(26, 26, 26, 1);
+    --shadow2: 2px 2px 0 0 rgba(26, 26, 26, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+    background: transparent; /* 底色与手绘框由 .app 绘制，宿主不再套圆角框 */
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(26, 26, 26, .25); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(26, 26, 26, .4); }
+
+  /* 手绘框直接充当整个会话区域的容器：奶油底（网点属于 app 背景，帧内不再绘制） */
+  .app {
+    height: 100%; display: flex; flex-direction: column;
+    background-color: #fdfaf5;
+    border: 4px solid var(--ink);
+    border-radius: var(--shape2);
+    overflow: hidden;
+  }
+
+  /* ---------- 顶部：PurrCat 标志 + 标题 + 会话 ID ---------- */
+  .head { flex: none; display: flex; align-items: center; gap: 12px; padding: 16px 28px 8px; }
+  .logo {
+    width: 42px; height: 42px; flex: none; display: flex; align-items: center; justify-content: center;
+    background: var(--terracotta); border: 4px solid var(--ink); border-radius: var(--shape1);
+    box-shadow: var(--shadow2); transform: rotate(-6deg); color: var(--paper);
+  }
+  .logo svg { width: 24px; height: 24px; }
+  .head h1 { font-family: var(--comic); font-size: 28px; font-weight: 900; letter-spacing: -1px; }
+  .idchip {
+    margin-left: auto; padding: 2px 12px; font-family: var(--comic); font-size: 12px; font-weight: 900;
+    background: var(--green); border: 2px solid var(--ink); border-radius: var(--shape2);
+    box-shadow: var(--shadow2); transform: rotate(2deg); white-space: nowrap;
+  }
+  .idchip.empty { background: #C9DBB7; color: transparent; width: 120px; height: 22px; transform: rotate(-3deg); }
+
+  /* ---------- 消息区 ---------- */
+  .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 6px; display: flex; flex-direction: column; gap: 20px; }
+  .row { display: flex; flex-direction: column; width: 100%; }
+  .row.u { align-items: flex-end; }
+  .row.a { align-items: flex-start; }
+  .inner { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 85%; }
+  .row.u .inner { align-items: flex-end; }
+  .row.a .inner { align-items: flex-start; }
+
+  /* 附件小条（文件/技能/工具/MCP/图谱引用） */
+  .atts { display: flex; flex-direction: column; gap: 8px; width: 100%; align-items: flex-end; margin-bottom: 8px; }
+  .chip-att {
+    max-width: 70%; padding: 8px 16px; font-size: 12px; font-weight: 700; font-family: var(--mono);
+    background: #F1EEE9; border: 2px solid var(--ink); border-radius: var(--shape3);
+    box-shadow: var(--shadow2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* 气泡：完整模式 border-4 border-ink + 6px 硬阴影；底色不透明，避免看起来像透明 */
+  .bubble {
+    position: relative; width: 100%; padding: 22px 24px; font-size: 16.5px; line-height: 1.6; font-weight: 700;
+    background: var(--paper); color: var(--ink); border: 4px solid var(--ink); box-shadow: var(--shadow6);
+    white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+  }
+  .bubble.u { border-radius: var(--shape2); }
+  .bubble.a { border-radius: var(--shape1); }
+  .copy {
+    position: absolute; top: 8px; right: 8px; padding: 6px; z-index: 5;
+    background: var(--paper); border: 2px solid var(--ink); border-radius: var(--shape3);
+    box-shadow: var(--shadow2); color: rgba(26, 26, 26, .6); cursor: pointer;
+    opacity: 0; transition: opacity .15s, background .15s, color .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bubble:hover .copy { opacity: 1; }
+  .copy:hover { background: var(--yellow); color: var(--ink); }
+  .copy svg { width: 14px; height: 14px; }
+
+  /* 助手抬头：ASSISTANT 标签 */
+  .ahead { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .ahead .tag {
+    font-family: var(--comic); font-size: 12px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;
+    background: var(--ink); color: var(--paper); padding: 2px 8px; border-radius: var(--shape3);
+  }
+
+  /* markdown 正文（简化渲染，贴合完整模式的排版气质） */
+  .md h1 { font-size: 22px; font-weight: 900; margin: 6px 0 12px; border-bottom: 4px solid var(--ink); display: inline-block; padding-bottom: 2px; }
+  .md h2 { font-size: 19px; font-weight: 900; margin: 12px 0 8px; }
+  .md h3 { font-size: 17px; font-weight: 900; margin: 10px 0 6px; }
+  .md p { margin: 0 0 10px; }
+  .md p:last-child { margin-bottom: 0; }
+  .md a { color: #3498DB; font-weight: 900; text-decoration: underline; }
+  .md ul, .md ol { margin: 0 0 10px; padding-left: 24px; }
+  .md li { margin: 3px 0; }
+  .md strong { font-weight: 900; color: var(--terracotta); }
+  .md blockquote { border-left: 4px solid var(--terracotta); padding: 4px 12px; margin: 10px 0; font-style: italic; background: #F8EDE6; border-radius: 0 8px 8px 0; }
+  .md code { font-family: var(--mono); font-size: .9em; background: var(--sand); color: var(--terracotta); padding: 1px 6px; border: 2px solid var(--ink); border-radius: var(--shape3); }
+  .md pre { margin: 12px 0; padding: 14px; border: 4px solid var(--ink); background: #F1EEE9; border-radius: var(--shape2); box-shadow: var(--shadow4); overflow-x: auto; }
+  .md pre code { background: none; border: none; color: var(--ink); padding: 0; font-size: 13px; line-height: 1.6; }
+  .md hr { margin: 12px 0; border: none; border-top: 4px solid rgba(26, 26, 26, .2); }
+
+  /* ---------- 折叠卡片：思考 / 工具（完整模式 ToolMessageBubble / ReasoningBubble） ---------- */
+  .fold {
+    width: fit-content; max-width: 250px; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; border: 2px solid var(--ink); box-shadow: var(--shadow2); cursor: pointer; border-radius: var(--shape3);
+    font-family: var(--comic); font-size: 11px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase;
+    transition: transform .15s, background .15s;
+  }
+  .fold:hover { transform: translateY(-2px); }
+  .fold .lft { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .fold .lft span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fold svg { width: 14px; height: 14px; flex: none; }
+  .fold.tool { background: #DCE7D0; }
+  .fold.tool:hover { background: #C7DAB3; }
+  .fold.call { background: #F6E6C3; }
+  .fold.reason { background: #E6ECE8; }
+  .fold.live { background: var(--cream); font-size: 14px; letter-spacing: 2px; padding: 14px 18px; max-width: none; border: 4px solid var(--ink); box-shadow: var(--shadow4); border-radius: var(--shape1); }
+  .fold.live:hover { transform: none; }
+
+  .block {
+    width: 100%; padding: 18px; border: 4px solid var(--ink); box-shadow: var(--shadow4); border-radius: var(--shape3);
+    background: var(--cream); color: var(--ink);
+  }
+  .block.tool { background: #DCE7D0; }
+  .block.call { background: #F6E6C3; }
+  .block.reason { background: #E6ECE8; }
+  .block .bhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid rgba(26, 26, 26, .2); }
+  .block .bhead svg { width: 16px; height: 16px; }
+  .block .bhead .t { font-family: var(--comic); font-size: 12px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; }
+  .block .body { font-family: var(--mono); font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; max-height: 288px; overflow-y: auto; }
+  .block .collapse {
+    margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; cursor: pointer;
+    font-size: 12px; font-weight: 900; font-family: var(--comic); letter-spacing: 1px; color: rgba(26, 26, 26, .7);
+    background: var(--paper); border: 2px solid transparent; border-radius: var(--shape2);
+  }
+  .block .collapse:hover { color: var(--terracotta); border-color: var(--ink); }
+  .block .collapse svg { width: 14px; height: 14px; }
+
+  /* ---------- 底部输入区 ---------- */
+  .inputbar { flex: none; display: flex; gap: 16px; padding: 12px 28px 20px; align-items: flex-end; }
+  .field { flex: 1; position: relative; display: flex; flex-direction: column; }
+  textarea {
+    width: 100%; background: #FDF8F0; border: 4px solid var(--ink); border-radius: var(--shape3);
+    padding: 20px 60px 20px 20px; font: inherit; font-size: 17px; font-weight: 700; color: var(--ink);
+    resize: none; outline: none; transform: rotate(-0.5deg); min-height: 66px; max-height: 200px; line-height: 1.5;
+  }
+  textarea::placeholder { color: rgba(26, 26, 26, .3); }
+  textarea:disabled { opacity: .6; }
+  .plus {
+    position: absolute; right: 12px; bottom: 12px; width: 40px; height: 40px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; color: var(--ink);
+    background: var(--cream); border: 2px solid var(--ink); border-radius: var(--shape1); box-shadow: var(--shadow2);
+    transition: transform .25s, background .15s;
+  }
+  .plus:hover { background: var(--sand); }
+  .plus.active { background: var(--yellow); transform: rotate(45deg); }
+  .plus svg { width: 22px; height: 22px; }
+  .send {
+    flex: none; min-height: 66px; padding: 0 32px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+    background: var(--ink); color: var(--paper); border: 4px solid var(--ink); border-radius: var(--shape1);
+    box-shadow: 6px 6px 0 0 rgba(212, 122, 90, 1); transform: rotate(2deg);
+    font-weight: 900; font-size: 16px; transition: background .15s, color .15s;
+  }
+  .send svg { width: 26px; height: 26px; }
+  .send:hover:not(:disabled) { background: var(--terracotta); color: var(--ink); }
+  .send:disabled { opacity: .45; cursor: default; }
+
+  /* ---------- 消息区动作行：会话分支 / 记忆压缩 / trace2skill ---------- */
+  .acts { display: flex; gap: 10px; align-items: center; padding: 2px 0 4px; }
+  .act-btn {
+    width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: var(--paper); border: 3px solid var(--ink); border-radius: var(--shape1);
+    box-shadow: var(--shadow2); color: var(--ink); transition: transform .12s, background .12s;
+  }
+  .act-btn:hover { background: var(--yellow); transform: translateY(-2px); }
+  .act-btn:disabled { opacity: .45; cursor: default; }
+  .act-btn svg { width: 18px; height: 18px; }
+  .act-btn.busy svg { animation: spin .9s linear infinite; }
+
+  /* ---------- 引用面板（＋） ---------- */
+  .refPanel {
+    display: none; flex: none; margin: 0 28px 10px; padding: 12px;
+    background: var(--paper); border: 4px solid var(--ink); border-radius: var(--shape2); box-shadow: var(--shadow4);
+  }
+  .refPanel.open { display: block; }
+  .ref-pick { display: flex; gap: 12px; }
+  .cats { flex: none; width: 116px; display: flex; flex-direction: column; gap: 6px; }
+  .cat {
+    font: inherit; font-family: var(--comic); font-size: 12px; font-weight: 900; text-align: left;
+    padding: 6px 10px; cursor: pointer; color: var(--ink); background: var(--cream);
+    border: 2px solid var(--ink); border-radius: var(--shape3); box-shadow: var(--shadow2);
+  }
+  .cat:hover, .cat.active { background: var(--yellow); }
+  .right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .right-head { font-family: var(--comic); font-size: 12px; font-weight: 900; color: var(--dim); margin-bottom: 6px; }
+  .items { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; max-height: 132px; overflow-y: auto; }
+  .item {
+    font: inherit; font-size: 12px; font-weight: 800; padding: 4px 10px; cursor: pointer; color: var(--ink);
+    background: var(--cream); border: 2px solid var(--ink); border-radius: var(--shape3); box-shadow: var(--shadow2);
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .item:hover { background: var(--sand); }
+  .item.sel { background: var(--terracotta); color: var(--paper); }
+  .lb-empty { font-size: 12px; font-weight: 700; color: var(--dim); }
+
+  /* 已选引用 chips */
+  .quotes { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0 28px 8px; }
+  .quotes:empty { display: none; }
+  .quote {
+    display: inline-flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 6px 4px 12px;
+    font-size: 12px; font-weight: 800; background: var(--blue); border: 2px solid var(--ink);
+    border-radius: var(--shape3); box-shadow: var(--shadow2);
+  }
+  .quote span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .quote .x {
+    flex: none; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+    padding: 0; cursor: pointer; background: var(--paper); border: 2px solid var(--ink);
+    border-radius: 999px; font-size: 9px; line-height: 1; color: var(--ink);
+  }
+  .quote .x:hover { background: var(--red); color: var(--paper); }
+
+  /* ---------- trace2skill 弹层 ---------- */
+  .t2s-mask {
+    position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(26, 26, 26, .35);
+  }
+  .t2s-mask.on { display: flex; }
+  .t2s {
+    width: 100%; max-width: 420px; padding: 22px; background: var(--paper);
+    border: 4px solid var(--ink); border-radius: var(--shape2); box-shadow: var(--shadow6);
+  }
+  .t2s h3 { font-family: var(--comic); font-size: 19px; font-weight: 900; margin-bottom: 14px; }
+  .t2s .seg { display: flex; gap: 8px; margin-bottom: 12px; }
+  .t2s .seg button {
+    flex: 1; font: inherit; font-family: var(--comic); font-size: 12px; font-weight: 900; padding: 6px 0;
+    cursor: pointer; color: var(--ink); background: var(--cream);
+    border: 2px solid var(--ink); border-radius: var(--shape3); box-shadow: var(--shadow2);
+  }
+  .t2s .seg button.on { background: var(--yellow); }
+  .t2s input, .t2s textarea {
+    width: 100%; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink);
+    background: var(--cream); border: 3px solid var(--ink); border-radius: var(--shape3);
+    padding: 9px 12px; outline: none; margin-bottom: 10px;
+  }
+  .t2s textarea { min-height: 84px; resize: vertical; }
+  .t2s .foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+  .t2s .foot button {
+    font: inherit; font-family: var(--comic); font-size: 13px; font-weight: 900; padding: 6px 20px;
+    cursor: pointer; color: var(--ink); background: var(--paper);
+    border: 3px solid var(--ink); border-radius: var(--shape1); box-shadow: var(--shadow2);
+  }
+  .t2s .foot button.primary { background: var(--ink); color: var(--paper); }
+  .t2s .foot button.primary:hover { background: var(--terracotta); color: var(--ink); }
+
+  /* ---------- toast ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; z-index: 70; padding: 8px 18px;
+    font-family: var(--comic); font-size: 12.5px; font-weight: 900;
+    background: var(--ink); color: var(--paper); border-radius: var(--shape3); box-shadow: var(--shadow2);
+    opacity: 0; transform: translate(-50%, 16px); pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- 空态 ---------- */
+  .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
+  .empty .card {
+    background: var(--paper); border: 4px solid var(--ink); border-radius: var(--shape2); box-shadow: 6px 6px 0 0 rgba(26, 26, 26, 1);
+    padding: 26px 30px; max-width: 420px; transform: rotate(-1deg);
+  }
+  .empty .card h2 { font-family: var(--comic); font-size: 22px; font-weight: 900; margin-bottom: 8px; }
+  .empty .card p { font-weight: 700; color: rgba(26, 26, 26, .6); line-height: 1.7; font-size: 14px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="head">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21s-9-3-9-7.56c0-1.25.5-2.4 1-3.44 0 0-1.89-6.42-.5-7 1.39-.58 4.72.23 6.5 2.23A9.04 9.04 0 0 1 12 5Z"/>
+          <path d="M8 14v.5"/><path d="M16 14v.5"/><path d="M11.25 16.25h1.5L12 17l-.75-.75Z"/>
+        </svg>
+      </div>
+      <h1>PurrCat.</h1>
+      <div class="idchip empty" id="idchip"></div>
+    </div>
+
+    <div class="msgs" id="msgs"></div>
+
+    <div class="refPanel" id="refPanel">
+      <div class="ref-pick">
+        <div class="cats" id="cats"></div>
+        <div class="right">
+          <div class="right-head" id="rName"></div>
+          <div class="items" id="rItems"></div>
+        </div>
+      </div>
+    </div>
+    <div class="quotes" id="quotes"></div>
+
+    <div class="inputbar" id="inputbar">
+      <div class="field">
+        <textarea id="input" rows="2" placeholder="选择会话后输入消息…" disabled></textarea>
+        <div class="plus" id="plus" title="添加引用">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+      </div>
+      <button class="send" id="send" disabled title="发送">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l16 8-16 8 3-8z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- trace2skill 表单（插件自带弹层，不依赖宿主弹窗能力） -->
+  <div class="t2s-mask" id="t2sMask">
+    <div class="t2s">
+      <h3>trace2skill</h3>
+      <div class="seg">
+        <button type="button" id="t2sUpgrade" class="on">升级技能</button>
+        <button type="button" id="t2sCreate">创建技能</button>
+      </div>
+      <input id="t2sName" type="text" placeholder="技能名称" spellcheck="false" autocomplete="off" />
+      <textarea id="t2sGoal" placeholder="期望：本次会话要沉淀/升级成什么样的技能"></textarea>
+      <div class="foot">
+        <button type="button" id="t2sCancel">取消</button>
+        <button type="button" id="t2sOk" class="primary">确定</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SVG_HEAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">';
+  var ICON_COPY = SVG_HEAD + '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+  var ICON_BRAIN = SVG_HEAD + '<path d="M9.5 3A2.5 2.5 0 0 0 7 5.5 2.5 2.5 0 0 0 5 8c0 1 .4 1.8 1 2.4A2.5 2.5 0 0 0 5 13a2.5 2.5 0 0 0 1.5 2.3A2.5 2.5 0 0 0 9 20a2.5 2.5 0 0 0 2.5-2.5V5.5A2.5 2.5 0 0 0 9.5 3Z"/><path d="M14.5 3A2.5 2.5 0 0 1 17 5.5 2.5 2.5 0 0 1 19 8c0 1-.4 1.8-1 2.4A2.5 2.5 0 0 1 19 13a2.5 2.5 0 0 1-1.5 2.3A2.5 2.5 0 0 1 15 20a2.5 2.5 0 0 1-2.5-2.5V5.5A2.5 2.5 0 0 1 14.5 3Z"/></svg>';
+  var ICON_SPIN = SVG_HEAD + '<path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>';
+  var ICON_WRENCH = SVG_HEAD + '<path d="M14.7 6.3a4 4 0 0 0 5 5L21 10l-7 7-3 3-3-3 3-3 7-7z"/></svg>';
+  var ICON_BOX = SVG_HEAD + '<path d="m3 7 9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>';
+  var ICON_DOWN = SVG_HEAD + '<path d="m6 9 6 6 6-6"/></svg>';
+  var ICON_UP = SVG_HEAD + '<path d="m18 15-6-6-6 6"/></svg>';
+  var ICON_BRANCH = SVG_HEAD + '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>';
+  var ICON_BOOK = SVG_HEAD + '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>';
+
+  /* ---------- 宿主桥 ---------- */
+  var seq = 0;
+  function callAction(actionId, payload) {
+    return new Promise(function (resolve, reject) {
+      var id = ++seq;
+      function onMsg(e) {
+        var m = e.data;
+        if (m && m.type === 'callActionResult' && m.id === id) {
+          window.removeEventListener('message', onMsg);
+          if (m.ok) resolve(m.data); else reject(new Error(m.error || 'callAction 失败'));
+        }
+      }
+      window.addEventListener('message', onMsg);
+      window.parent.postMessage({ type: 'callAction', id: id, actionId: actionId, payload: payload || {} }, '*');
+    });
+  }
+
+  /* ---------- 工具函数 ---------- */
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function inline(s) {
+    s = esc(s);
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    return s;
+  }
+  function mdToHtml(src) {
+    var lines = String(src || '').split(/\r?\n/);
+    var out = [], inCode = false, code = [], inList = false, listTag = 'ul';
+    function closeList() { if (inList) { out.push('</' + listTag + '>'); inList = false; } }
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      if (/^\s*```/.test(ln)) {
+        if (inCode) { out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>'); code = []; inCode = false; }
+        else { closeList(); inCode = true; }
+        continue;
+      }
+      if (inCode) { code.push(ln); continue; }
+      var h = ln.match(/^(#{1,3})\s+(.*)$/);
+      if (h) { closeList(); out.push('<h' + h[1].length + '>' + inline(h[2]) + '</h' + h[1].length + '>'); continue; }
+      if (/^\s*([-*])\s+/.test(ln)) {
+        if (!inList || listTag !== 'ul') { closeList(); out.push('<ul>'); inList = true; listTag = 'ul'; }
+        out.push('<li>' + inline(ln.replace(/^\s*([-*])\s+/, '')) + '</li>'); continue;
+      }
+      if (/^\s*\d+\.\s+/.test(ln)) {
+        if (!inList || listTag !== 'ol') { closeList(); out.push('<ol>'); inList = true; listTag = 'ol'; }
+        out.push('<li>' + inline(ln.replace(/^\s*\d+\.\s+/, '')) + '</li>'); continue;
+      }
+      if (/^\s*>\s?/.test(ln)) { closeList(); out.push('<blockquote>' + inline(ln.replace(/^\s*>\s?/, '')) + '</blockquote>'); continue; }
+      if (/^\s*(-{3,}|\*{3,})\s*$/.test(ln)) { closeList(); out.push('<hr>'); continue; }
+      if (!ln.trim()) { closeList(); continue; }
+      closeList(); out.push('<p>' + inline(ln) + '</p>');
+    }
+    if (inCode) out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>');
+    closeList();
+    return out.join('');
+  }
+  // 解析用户事件（对齐完整模式 parseEventsContent）：只有 type=user 进正文，
+  // 五类 quote 进附件，其余类型（system/workflow_hint 等）一律不渲染。
+  function parseUser(content) {
+    var msgs = [], atts = [];
+    var QUOTE = { 'file-quote': 1, 'skill-quote': 1, 'tool-quote': 1, 'mcp-quote': 1, 'graph-quote': 1 };
+    try {
+      var data = JSON.parse(content);
+      if (data && Array.isArray(data.events)) {
+        data.events.forEach(function (ev) {
+          var t = ev.type || '';
+          if (t === 'user') msgs.push(ev.content || '');
+          else if (QUOTE[t]) atts.push(ev.content || '');
+        });
+      }
+      // 解析成功但不是 events 包装（如 {"type":"workflow_hint",...}）：不渲染任何内容
+      return { msgs: msgs, atts: atts };
+    } catch (e) { /* 非 JSON，按纯文本用户消息 */ }
+    msgs.push(String(content == null ? '' : content));
+    return { msgs: msgs, atts: atts };
+  }
+  function toolText(content) {
+    if (Array.isArray(content)) {
+      var parts = content.filter(function (p) { return p && p.type === 'text' && typeof p.text === 'string'; }).map(function (p) { return p.text; });
+      return parts.join('\n') || '[图片已注入对话]';
+    }
+    if (typeof content === 'string') {
+      try {
+        var p = JSON.parse(content);
+        if (p && typeof p === 'object') {
+          if (typeof p.content === 'string') return p.content;
+          if (typeof p.error === 'string') return p.error;
+        }
+      } catch (e) { /* 原样 */ }
+      return content;
+    }
+    try { return JSON.stringify(content, null, 2); } catch (e) { return String(content); }
+  }
+
+  /* ---------- 配置 ---------- */
+  var config = { greeting: 'Hi，我是 PurrCat！选个会话开始吧～', show_reasoning: true, show_tool_calls: true };
+  function applyConfig(c) { config = Object.assign({}, config, c || {}); if (!state.thinking) renderEmptyGreetingIfNeeded(); }
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (m && m.type === 'configApply') applyConfig(m.config);
+  });
+  callAction('config.get', { plugin_id: 'doodle-chat' }).then(applyConfig).catch(function () {});
+
+  /* ---------- 状态 ---------- */
+  var msgsEl = document.getElementById('msgs');
+  var inputEl = document.getElementById('input');
+  var sendBtn = document.getElementById('send');
+  var idchip = document.getElementById('idchip');
+
+  var state = {
+    sessionId: '',
+    branch: 'main',
+    readOnly: false,
+    thinking: false,
+    phase: 'thinking',   // thinking | processing
+    liveReasoning: '',
+    localBuffer: [],
+    rows: []
+  };
+
+  function setHeader() {
+    if (state.sessionId) {
+      idchip.classList.remove('empty');
+      idchip.textContent = 'ID: ' + (state.sessionId.split('_')[1] || state.sessionId.slice(-8));
+    } else {
+      idchip.classList.add('empty');
+      idchip.textContent = '';
+    }
+    var enabled = !!state.sessionId && !state.readOnly;
+    inputEl.disabled = !enabled;
+    inputEl.placeholder = state.readOnly ? '子分支只读视图' : (state.sessionId ? '输入消息，Enter 发送 / Shift+Enter 换行' : '选择会话后输入消息…');
+    refreshSend();
+  }
+  function refreshSend() { sendBtn.disabled = !state.sessionId || state.readOnly || (!inputEl.value.trim() && !quotes.length); }
+
+  /* ---------- 引用（＋）：文件 / 文件夹 / Skill / MCP / Graph ---------- */
+  var plusBtn = document.getElementById('plus');
+  var refPanelEl = document.getElementById('refPanel');
+  var catsEl = document.getElementById('cats');
+  var rName = document.getElementById('rName');
+  var rItems = document.getElementById('rItems');
+  var quotesEl = document.getElementById('quotes');
+
+  var quotes = [];
+  function addQuote(type, content, label) {
+    quotes.push({ type: type, content: content, label: label || content });
+    renderQuotes(); markSel(); refreshSend();
+  }
+  function hasQuote(label) { return quotes.some(function (q) { return q.label === label; }); }
+  function removeQuote(label) { quotes = quotes.filter(function (q) { return q.label !== label; }); renderQuotes(); markSel(); refreshSend(); }
+  function renderQuotes() {
+    quotesEl.innerHTML = '';
+    quotes.forEach(function (q) {
+      var d = document.createElement('div');
+      d.className = 'quote';
+      var s = document.createElement('span');
+      s.textContent = q.label;
+      s.title = q.label;
+      var x = document.createElement('button');
+      x.className = 'x';
+      x.textContent = '✕';
+      x.title = '移除引用';
+      x.addEventListener('click', function () { removeQuote(q.label); });
+      d.appendChild(s); d.appendChild(x);
+      quotesEl.appendChild(d);
+    });
+  }
+
+  var CATS = [
+    { t: 'file', label: '＋ 文件', dialog: true },
+    { t: 'folder', label: '＋ 文件夹', dialog: true },
+    { t: 'skill', label: 'Skill' },
+    { t: 'mcp', label: 'MCP' },
+    { t: 'graph', label: 'Graph' }
+  ];
+  var activeCat = null;
+  var catCache = {};
+
+  function pickPath(r) {
+    if (!r) return null;
+    if (Array.isArray(r)) return r[0];
+    if (Array.isArray(r.filePaths)) return r.filePaths[0];
+    if (Array.isArray(r.paths)) return r.paths[0];
+    if (typeof r === 'string') return r;
+    if (typeof r.path === 'string') return r.path;
+    return null;
+  }
+  function setActiveCat(t) {
+    activeCat = t;
+    Array.prototype.forEach.call(catsEl.querySelectorAll('.cat'), function (c) { c.classList.toggle('active', c.dataset.t === t); });
+  }
+  function showRight(title, items) {
+    rName.textContent = title;
+    rItems.innerHTML = '';
+    if (!items || !items.length) {
+      var e = document.createElement('div');
+      e.className = 'lb-empty';
+      e.textContent = '暂无可用项';
+      rItems.appendChild(e);
+      return;
+    }
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = 'item' + (hasQuote(it.label) ? ' sel' : '');
+      b.textContent = it.text;
+      b.title = it.hint || it.label;
+      b.addEventListener('click', function () {
+        if (hasQuote(it.label)) removeQuote(it.label);
+        else addQuote(it.type, it.content, it.label);
+      });
+      rItems.appendChild(b);
+    });
+  }
+  function markSel() {
+    Array.prototype.forEach.call(rItems.querySelectorAll('.item'), function (b) {
+      b.classList.toggle('sel', hasQuote(b.textContent));
+    });
+  }
+  function fetchList(t) {
+    if (catCache[t]) return Promise.resolve(catCache[t]);
+    var p;
+    if (t === 'skill') {
+      p = fetch('/api/tools/skills').then(function (r) { return r.json(); }).then(function (s) {
+        return (s || []).map(function (x) {
+          var n = x.name || x.dir_name || 'unknown';
+          return { label: n, text: n, hint: x.description || '', type: 'skill-quote', content: 'user want you fetch skill：' + n };
+        });
+      });
+    } else if (t === 'mcp') {
+      p = fetch('/api/tools/mcp').then(function (r) { return r.json(); }).then(function (servers) {
+        var names = (servers && typeof servers === 'object') ? Object.keys(servers) : [];
+        return names.map(function (n) { return { label: n, text: n, type: 'mcp-quote', content: 'user want you fetch mcp：' + n }; });
+      });
+    } else {
+      p = fetch('/api/graphs').then(function (r) { return r.json(); }).then(function (graphs) {
+        var names = (graphs || []).map(function (g) { return (typeof g === 'string') ? g : g.name; });
+        return names.map(function (g) { return { label: g, text: g, type: 'graph-quote', content: 'user quote the graph：' + g }; });
+      });
+    }
+    return p.catch(function () { return []; }).then(function (items) { catCache[t] = items; return items; });
+  }
+  function openCat(t) {
+    setActiveCat(t);
+    fetchList(t).then(function (items) {
+      if (activeCat !== t) return;
+      var names = { skill: '选择 Skill', mcp: '选择 MCP', graph: '选择 Graph' };
+      showRight(names[t] || t, items);
+      markSel();
+    });
+  }
+  function handleCatClick(c) {
+    if (c.t === 'file') {
+      callAction('dialog.files').then(function (r) {
+        var p = pickPath(r);
+        if (p) addQuote('file-quote', 'user quote the file：' + p, p.split(/[\\/]/).pop());
+      }).catch(function (e) { toast('选择文件失败：' + (e.message || e)); });
+    } else if (c.t === 'folder') {
+      callAction('dialog.folder').then(function (r) {
+        var p = pickPath(r);
+        if (p) addQuote('file-quote', 'user quote the file：' + p, p);
+      }).catch(function (e) { toast('选择文件夹失败：' + (e.message || e)); });
+    } else {
+      openCat(c.t);
+    }
+  }
+  function buildCats() {
+    catsEl.innerHTML = '';
+    CATS.forEach(function (c) {
+      var b = document.createElement('button');
+      b.className = 'cat';
+      b.dataset.t = c.t;
+      b.textContent = c.label;
+      b.addEventListener('mouseenter', function () {
+        setActiveCat(c.t);
+        if (c.dialog) showRight(c.label, []);
+        else openCat(c.t);
+      });
+      b.addEventListener('click', function () { handleCatClick(c); });
+      catsEl.appendChild(b);
+    });
+  }
+  function toggleRef(show) {
+    var open = show !== undefined ? !!show : !refPanelEl.classList.contains('open');
+    refPanelEl.classList.toggle('open', open);
+    plusBtn.classList.toggle('active', open);
+    if (open) {
+      var first = catsEl.querySelector('.cat');
+      if (first) first.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    }
+  }
+  plusBtn.addEventListener('click', function () { toggleRef(); });
+
+  /* ---------- toast ---------- */
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('on'); }, 2200);
+  }
+
+  /* ---------- 消息区动作行：会话分支 / 记忆压缩 / trace2skill ---------- */
+  var branchBusy = false, compressBusy = false;
+  function actBtn(busy, icon, title, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'act-btn' + (busy ? ' busy' : '');
+    b.title = title;
+    b.disabled = busy;
+    b.innerHTML = busy ? ICON_SPIN : icon;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function buildActions() {
+    var bar = document.createElement('div');
+    bar.className = 'acts';
+    bar.appendChild(actBtn(branchBusy, ICON_BRANCH, '会话分支', doBranch));
+    bar.appendChild(actBtn(compressBusy, ICON_BRAIN, '记忆压缩', compressMemory));
+    bar.appendChild(actBtn(false, ICON_BOOK, 'trace2skill', openTraceModal));
+    return bar;
+  }
+  function renderActions() {
+    var old = msgsEl.querySelector('.acts');
+    if (old) old.parentNode.removeChild(old);
+    if (state.rows.length && !state.thinking) msgsEl.appendChild(buildActions());
+  }
+  function rerenderActions() { renderActions(); msgsEl.scrollTop = msgsEl.scrollHeight; }
+
+  function compressMemory() {
+    if (compressBusy || !state.sessionId) return;
+    compressBusy = true; rerenderActions();
+    var sid = state.sessionId;
+    fetch('/api/chat/compress-memory', { method: 'POST' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json().catch(function () { return {}; }); })
+      .then(function () {
+        toast('记忆压缩已启动');
+        var timer = setInterval(function () {
+          fetch('/api/sessions/' + encodeURIComponent(sid) + '/status')
+            .then(function (r) { return r.json(); })
+            .then(function (st) { if (st && st.compressing === false) { clearInterval(timer); compressBusy = false; rerenderActions(); toast('记忆压缩完成'); } })
+            .catch(function () {});
+        }, 1500);
+      })
+      .catch(function (e) { compressBusy = false; rerenderActions(); toast('压缩失败：' + (e.message || e)); });
+  }
+  function doBranch() {
+    if (branchBusy || !state.sessionId) return;
+    branchBusy = true; rerenderActions();
+    callAction('session.branch', { session_id: state.sessionId, alias: '' })
+      .then(function () { toast('已创建分支会话'); })
+      .catch(function (e) { toast('分支失败：' + (e.message || e)); });
+    setTimeout(function () { branchBusy = false; rerenderActions(); }, 800);
+  }
+
+  /* trace2skill 表单 */
+  var t2sMask = document.getElementById('t2sMask');
+  var t2sType = 'upgrade';
+  var t2sBusy = false;
+  function setT2sType(t) {
+    t2sType = t;
+    document.getElementById('t2sUpgrade').classList.toggle('on', t === 'upgrade');
+    document.getElementById('t2sCreate').classList.toggle('on', t === 'create');
+  }
+  function openTraceModal() {
+    if (!state.sessionId) { toast('请先选择会话'); return; }
+    document.getElementById('t2sName').value = '';
+    document.getElementById('t2sGoal').value = '';
+    setT2sType('upgrade');
+    t2sMask.classList.add('on');
+    setTimeout(function () { document.getElementById('t2sName').focus(); }, 0);
+  }
+  function closeTraceModal() { t2sMask.classList.remove('on'); }
+  document.getElementById('t2sUpgrade').addEventListener('click', function () { setT2sType('upgrade'); });
+  document.getElementById('t2sCreate').addEventListener('click', function () { setT2sType('create'); });
+  document.getElementById('t2sCancel').addEventListener('click', closeTraceModal);
+  t2sMask.addEventListener('click', function (e) { if (e.target === t2sMask) closeTraceModal(); });
+  document.getElementById('t2sOk').addEventListener('click', function () {
+    if (t2sBusy) return;
+    var name = document.getElementById('t2sName').value.trim();
+    var goal = document.getElementById('t2sGoal').value.trim();
+    if (!name) { toast('请填写技能名称'); return; }
+    if (!goal) { toast('请填写期望描述'); return; }
+    t2sBusy = true;
+    var okBtn = document.getElementById('t2sOk'); okBtn.disabled = true;
+    callAction('chat.traceToSkill', { session_id: state.sessionId, name: name, is_upgrade: t2sType === 'upgrade', goal: goal })
+      .then(function () { toast('技能任务已下发'); closeTraceModal(); })
+      .catch(function (e) { toast('下发失败：' + (e.message || e)); })
+      .finally(function () { t2sBusy = false; okBtn.disabled = false; });
+  });
+
+  /* ---------- 折叠卡片 ---------- */
+  function makeFold(kind, cls, title, svg, onOpen) {
+    var el = document.createElement('div');
+    el.className = 'fold ' + cls;
+    var lft = document.createElement('div');
+    lft.className = 'lft';
+    lft.innerHTML = (svg || '');
+    var sp = document.createElement('span');
+    sp.textContent = title;
+    lft.appendChild(sp);
+    el.appendChild(lft);
+    var chev = document.createElement('span');
+    chev.innerHTML = ICON_DOWN;
+    chev.firstChild.style.width = '14px';
+    chev.firstChild.style.height = '14px';
+    el.appendChild(chev);
+    el.addEventListener('click', onOpen);
+    return el;
+  }
+  function makeBlock(cls, title, svg, bodyText, isMd) {
+    var el = document.createElement('div');
+    el.className = 'block ' + cls;
+    var head = document.createElement('div');
+    head.className = 'bhead';
+    head.innerHTML = (svg || '');
+    var t = document.createElement('span');
+    t.className = 't';
+    t.textContent = title;
+    head.appendChild(t);
+    el.appendChild(head);
+    var body = document.createElement('div');
+    body.className = 'body';
+    if (isMd) { body.className = 'body md'; body.style.fontFamily = 'inherit'; body.innerHTML = mdToHtml(bodyText); body.style.whiteSpace = 'normal'; }
+    else body.textContent = bodyText;
+    el.appendChild(body);
+    var col = document.createElement('button');
+    col.className = 'collapse';
+    col.innerHTML = ICON_UP + '<span>COLLAPSE</span>';
+    col.firstChild.style.width = '14px';
+    col.firstChild.style.height = '14px';
+    el.appendChild(col);
+    return { el: el, collapse: col };
+  }
+  // 折叠卡：未展开显示 chip，展开替换为完整块
+  function foldable(cls, title, svg, bodyText, isMd) {
+    var wrap = document.createElement('div');
+    wrap.style.width = '100%';
+    var expanded = false;
+    function render() {
+      wrap.innerHTML = '';
+      if (!expanded) {
+        wrap.appendChild(makeFold('', cls, title, svg, function () { expanded = true; render(); }));
+      } else {
+        var b = makeBlock(cls.indexOf('tool') >= 0 ? 'tool' : cls.indexOf('call') >= 0 ? 'call' : 'reason', title, svg, bodyText, isMd);
+        b.collapse.addEventListener('click', function () { expanded = false; render(); });
+        wrap.appendChild(b.el);
+      }
+    }
+    render();
+    return wrap;
+  }
+
+  /* ---------- 消息渲染 ---------- */
+  function copyBtn(getText) {
+    var b = document.createElement('button');
+    b.className = 'copy';
+    b.title = '复制';
+    b.innerHTML = ICON_COPY;
+    b.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      var txt = getText();
+      if (navigator.clipboard) navigator.clipboard.writeText(txt);
+      else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      b.style.background = '#a3be8c';
+      setTimeout(function () { b.style.background = ''; }, 600);
+    });
+    return b;
+  }
+
+  function renderMessage(m) {
+    var role = m.role || 'assistant';
+    var row = document.createElement('div');
+    row.className = 'row ' + (role === 'user' ? 'u' : 'a');
+    var inner = document.createElement('div');
+    inner.className = 'inner';
+    row.appendChild(inner);
+    var count = 0;
+
+    if (role === 'user') {
+      var parsed = parseUser(m.content);
+      if (parsed.atts.length) {
+        var atts = document.createElement('div');
+        atts.className = 'atts';
+        parsed.atts.forEach(function (a) {
+          var c = document.createElement('div');
+          c.className = 'chip-att';
+          c.textContent = a;
+          c.title = a;
+          atts.appendChild(c);
+        });
+        inner.appendChild(atts); count++;
+      }
+      parsed.msgs.forEach(function (txt) {
+        if (!txt) return;
+        var b = document.createElement('div');
+        b.className = 'bubble u';
+        b.textContent = txt;
+        b.appendChild(copyBtn(function () { return txt; }));
+        inner.appendChild(b); count++;
+      });
+    } else if (role === 'assistant') {
+      if (config.show_reasoning && m.reasoning_content) {
+        inner.appendChild(foldable('reason', 'REASONING', ICON_BRAIN, m.reasoning_content, false)); count++;
+      }
+      if (m.content) {
+        var b = document.createElement('div');
+        b.className = 'bubble a';
+        var head = document.createElement('div');
+        head.className = 'ahead';
+        var tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'ASSISTANT';
+        head.appendChild(tag);
+        b.appendChild(head);
+        var body = document.createElement('div');
+        body.className = 'md';
+        body.innerHTML = mdToHtml(m.content);
+        b.appendChild(body);
+        b.appendChild(copyBtn(function () { return m.content; }));
+        inner.appendChild(b); count++;
+      }
+      if (config.show_tool_calls && m.tool_calls && m.tool_calls.length) {
+        m.tool_calls.forEach(function (tc) {
+          var fn = (tc.function && typeof tc.function === 'object') ? tc.function : {};
+          var name = fn.name || tc.name || 'tool';
+          var args = fn.arguments != null ? fn.arguments : (tc.arguments != null ? tc.arguments : '');
+          var pretty = '';
+          try { pretty = JSON.stringify(JSON.parse(args), null, 2); } catch (e) { pretty = String(args); }
+          inner.appendChild(foldable('call', 'CALL: ' + name, ICON_WRENCH, pretty, false)); count++;
+        });
+      }
+      if (!count) {
+        if (!m.reasoning_content && !m.tool_calls) {
+          var nb = document.createElement('div');
+          nb.className = 'bubble a';
+          nb.textContent = '（无内容）';
+          inner.appendChild(nb); count++;
+        } else return null;
+      }
+    } else {
+      if (!config.show_tool_calls) return null;
+      inner.appendChild(foldable('tool', 'RESULT: ' + (m.name || 'Output'), ICON_BOX, toolText(m.content), false)); count++;
+    }
+    return count ? row : null;
+  }
+
+  function renderEmptyGreetingIfNeeded() {
+    if (state.rows.length) return;
+    msgsEl.innerHTML = '';
+    var e = document.createElement('div');
+    e.className = 'empty';
+    e.innerHTML = '<div class="card"><h2>' + esc(config.greeting || 'Hi～') + '</h2>'
+      + '<p>这里是符合完整模式排版的手绘会话面板：右侧是你的消息气泡，左侧是 PurrCat 的回复，思考与工具调用以可折叠卡片内联展示。</p></div>';
+    msgsEl.appendChild(e);
+  }
+
+  function renderHistory(rows) {
+    state.rows = rows || [];
+    var stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 60;
+    msgsEl.innerHTML = '';
+    if (!state.rows.length) { renderEmptyGreetingIfNeeded(); return; }
+    state.rows.forEach(function (m) { var r = renderMessage(m); if (r) msgsEl.appendChild(r); });
+    appendLive();
+    renderActions();
+    if (stick) msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  // 本轮乐观消息（发送即渲染）
+  function appendLocalUser(txt) {
+    var emptyEl = msgsEl.querySelector('.empty');
+    if (emptyEl) emptyEl.remove();
+    var r = renderMessage({ role: 'user', content: JSON.stringify({ events: [{ type: 'user', content: txt }] }) });
+    if (r) msgsEl.appendChild(r);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  /* ---------- 思考气泡（live） ---------- */
+  var liveEl = null;
+  function removeLive() { if (liveEl && liveEl.parentNode) liveEl.parentNode.removeChild(liveEl); liveEl = null; }
+  function appendLive() {
+    removeLive();
+    if (!state.thinking) return;
+    var oldActs = msgsEl.querySelector('.acts');
+    if (oldActs) oldActs.parentNode.removeChild(oldActs);
+    var row = document.createElement('div');
+    row.className = 'row a';
+    var inner = document.createElement('div');
+    inner.className = 'inner';
+    inner.style.maxWidth = '85%';
+    var title = state.phase === 'processing' ? 'PROCESSING...' : 'THINKING...';
+    var icon = state.phase === 'processing'
+      ? ICON_SPIN.replace('stroke-width="2.5"', 'stroke-width="2.5" class="spin"')
+      : ICON_BRAIN;
+    var el;
+    if (!state.liveReasoning) {
+      el = makeFold('', 'live', title, icon, function () {});
+      el.style.cursor = 'default';
+    } else {
+      var b = makeBlock('reason', title, icon, state.liveReasoning, false);
+      b.el.className = 'block reason';
+      b.el.style.width = '100%';
+      b.collapse.style.display = 'none';
+      el = b.el;
+    }
+    inner.appendChild(el);
+    row.appendChild(inner);
+    msgsEl.appendChild(row);
+    liveEl = row;
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  /* ---------- 数据加载 ---------- */
+  function loadHistory() {
+    if (!state.sessionId) { state.rows = []; renderHistory([]); return; }
+    fetch('/api/sessions/' + encodeURIComponent(state.sessionId) + '?branch_id=' + encodeURIComponent(state.branch))
+      .then(function (r) { return r.json(); })
+      .then(function (h) {
+        var rows = Array.isArray(h) ? h : (h && Array.isArray(h.history) ? h.history : []);
+        if (state.localBuffer.length) {
+          rows = rows.concat(state.localBuffer.map(function (t) { return { role: 'user', content: JSON.stringify({ events: [{ type: 'user', content: t }] }) }; }));
+        }
+        renderHistory(rows);
+      })
+      .catch(function () { renderHistory(state.rows); });
+  }
+
+  var pollTimer = null, pollFast = false;
+  function pollStatus() {
+    if (!state.sessionId) return;
+    fetch('/api/sessions/' + encodeURIComponent(state.sessionId) + '/status')
+      .then(function (r) { return r.json(); })
+      .then(function (st) {
+        var thinking = !!(st && st.is_thinking);
+        if (thinking !== state.thinking) {
+          state.thinking = thinking;
+          if (!thinking) { state.liveReasoning = ''; state.localBuffer = []; loadHistory(); }
+          else { appendLive(); }
+        }
+        schedule(thinking ? 700 : 2600);
+      })
+      .catch(function () { schedule(2600); });
+  }
+  function schedule(delay) {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(pollStatus, delay);
+  }
+
+  /* ---------- 发送 ---------- */
+  function send() {
+    var txt = inputEl.value.trim();
+    if ((!txt && !quotes.length) || !state.sessionId || state.readOnly) return;
+    var events = quotes.map(function (q) { return { type: q.type, content: q.content }; });
+    if (txt) events.push({ type: 'user', content: txt });
+    inputEl.value = '';
+    quotes = []; renderQuotes(); toggleRef(false);
+    refreshSend();
+    if (txt) { state.localBuffer.push(txt); appendLocalUser(txt); }
+    state.thinking = true;
+    state.phase = 'thinking';
+    state.liveReasoning = '';
+    appendLive();
+    schedule(400);
+    callAction('chat.sendBatch', { events: events })
+      .catch(function () {
+        state.thinking = false;
+        if (txt) state.localBuffer.pop();
+        removeLive();
+        alert('发送失败，请重试');
+      });
+  }
+
+  /* ---------- 事件 ---------- */
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'layout.empty') { /* 空态由 history 决定，忽略 */ return; }
+    if (m.type !== 'event') return;
+    var d = m.data || {};
+    if (m.event === 'session.switched') {
+      state.sessionId = d.session_id || '';
+      state.branch = 'main';
+      state.readOnly = false;
+      state.thinking = false; state.liveReasoning = ''; state.localBuffer = [];
+      setHeader(); loadHistory(); schedule(300);
+    } else if (m.event === 'branch.switched') {
+      var bid = d.branch_id || 'main';
+      state.branch = bid;
+      state.readOnly = bid !== 'main';
+      state.localBuffer = [];
+      setHeader(); loadHistory();
+    } else if (m.event === 'conversation.updated') {
+      if (!state.thinking) loadHistory();
+      schedule(300);
+    } else if (m.event === 'conversation.local') {
+      var evs = Array.isArray(d.events) ? d.events : [];
+      if (state.branch !== 'main') return;
+      evs.forEach(function (ev) { var t = String(ev && ev.content || ''); if (t) { state.localBuffer.push(t); appendLocalUser(t); } });
+      if (evs.length && !state.thinking) { state.thinking = true; state.phase = 'thinking'; appendLive(); }
+      schedule(400);
+    }
+  });
+
+  /* ---------- 输入交互 ---------- */
+  inputEl.addEventListener('input', refreshSend);
+  inputEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+  });
+  sendBtn.addEventListener('click', send);
+
+  /* ---------- 启动 ---------- */
+  (function boot() {
+    var spinStyle = document.createElement('style');
+    spinStyle.textContent = '@keyframes spin{to{transform:rotate(360deg)}}.spin{animation:spin .8s linear infinite}';
+    document.head.appendChild(spinStyle);
+    setHeader();
+    buildCats();
+    callAction('state.get').then(function (st) {
+      state.sessionId = (st && st.activeSessionId) || '';
+      state.branch = (st && st.activeBranchId) || 'main';
+      state.readOnly = state.branch !== 'main';
+      setHeader();
+      loadHistory();
+      schedule(300);
+    }).catch(function () { setHeader(); renderHistory([]); });
+  })();
+})();
+</script>
+</body>
+</html>

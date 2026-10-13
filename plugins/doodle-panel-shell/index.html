@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>涂鸦面板容器</title>
+<style>
+  :root {
+    --cream: #FAF8F5;
+    --ink: #1A1A1A;
+    --terracotta: #D47A5A;
+    --paper: #FFFFFF;
+    --sand: #E8E5DF;
+    --dim: #8a8578;
+    --yellow: #EBCB8B;
+    --green: #a3be8c;
+    --sky: #88c0d0;
+    --violet: #b48ead;
+    --comic: "Comic Sans MS", "Segoe Print", "Bradley Hand", cursive;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --shape1: 255px 15px 225px 15px / 15px 225px 15px 255px;
+    --shape2: 15px 225px 15px 255px / 255px 15px 225px 15px;
+    --shape3: 225px 15px 255px 15px / 15px 255px 15px 225px;
+    --shadow6: 6px 6px 0 0 rgba(26, 26, 26, 1);
+    --shadow4: 4px 4px 0 0 rgba(26, 26, 26, 1);
+    --shadow2: 2px 2px 0 0 rgba(26, 26, 26, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(26, 26, 26, .25); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(26, 26, 26, .4); }
+  /* body 的背景会被上传到画布、且无视圆角 → 四角会露出方框；背景一律画在 .shell 上 */
+  html, body { background: transparent; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+    color: var(--ink); overflow: hidden;
+  }
+
+  /* 手绘容器直接充当整个区域的容器：无标题、无外边距 */
+  .app { height: 100%; display: flex; flex-direction: column; }
+
+  /* ---------- 容器外壳 ---------- */
+  /* 区域容器本体：手绘框即整个区域，不再套一层圆角框 */
+  .shell {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    /* 手绘框即整个区域：奶油底（网点属于 app 背景，帧内不再绘制） */
+    background-color: #fdfaf5;
+    border: 4px solid var(--ink);
+    border-radius: var(--shape2);
+    overflow: hidden;
+  }
+  /* 标签条：与面板之间不画分割线（原生面板容器同样无分割线，靠间距区分） */
+  .tabbar {
+    flex: none; display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+  .tab {
+    position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 190px;
+    padding: 5px 8px 5px 10px; cursor: pointer; color: var(--ink);
+    background: var(--paper); border: 3px solid var(--ink); border-radius: var(--shape3);
+    box-shadow: var(--shadow2); font-weight: 900; font-size: 12px;
+    transition: transform .12s, background .12s;
+  }
+  .tab:nth-child(even) { transform: rotate(.6deg); border-radius: var(--shape1); }
+  .tab:nth-child(3n) { transform: rotate(-.6deg); border-radius: var(--shape2); }
+  .tab:hover { background: var(--sand); transform: translateY(-2px); }
+  .tab.on { background: var(--yellow); }
+  .tab .ico { flex: none; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; }
+  .tab .ico svg { width: 15px; height: 15px; }
+  .tab .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .tabx {
+    flex: none; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center;
+    padding: 0; cursor: pointer; font-size: 10px; line-height: 1; color: var(--ink);
+    background: var(--paper); border: 2px solid var(--ink); border-radius: 999px;
+  }
+  .tab .tabx:hover { background: var(--red, #bf616a); color: var(--paper); }
+
+  /* + 号：与宿主原生面板容器的 wm-pp_add 同款「加号排在标签条末尾」 */
+  .addbtn {
+    width: 27px; height: 27px; flex: none; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: var(--paper); border: 3px solid var(--ink); border-radius: var(--shape3);
+    box-shadow: var(--shadow2); color: var(--ink); transition: transform .12s, background .12s;
+  }
+  .addbtn:hover { background: var(--yellow); transform: translateY(-2px); }
+  .addbtn svg { width: 15px; height: 15px; }
+
+  /* + 下拉：列出全部面板插件，已打开者高亮 */
+  .addmenu {
+    position: fixed; z-index: 40; min-width: 180px; max-width: 260px; max-height: 320px; overflow-y: auto;
+    padding: 8px; background: var(--paper); border: 4px solid var(--ink);
+    border-radius: var(--shape2); box-shadow: var(--shadow6);
+  }
+  .additem {
+    width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
+    padding: 6px 10px; margin-bottom: 4px; cursor: pointer; color: var(--ink);
+    background: var(--cream); border: 2px solid var(--ink); border-radius: var(--shape3);
+    box-shadow: var(--shadow2); font-weight: 900; font-size: 12px;
+  }
+  .additem:last-child { margin-bottom: 0; }
+  .additem:hover { background: var(--sand); }
+  .additem.on { background: var(--yellow); }
+  .additem .ico { flex: none; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; }
+  .additem .ico svg { width: 15px; height: 15px; }
+  .additem .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .additem .tick { flex: none; font-size: 10px; }
+  .addempty { padding: 8px 10px; font-size: 12px; font-weight: 700; color: var(--dim); }
+
+  /* ---------- 展台：每个面板插件各驻留一个独立 iframe ---------- */
+  .stage { flex: 1; min-height: 0; position: relative; padding: 10px; }
+  .view { position: absolute; inset: 0; display: none; padding: 10px; }
+  .view.on { display: block; }
+  .view .frame {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    border-radius: var(--shape1);
+    box-shadow: var(--shadow2);
+  }
+  .view:nth-child(even) .frame { border-radius: var(--shape2); }
+  .view:nth-child(3n) .frame { border-radius: var(--shape3); }
+  .view .frame iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--paper); }
+
+  /* 手绘倾斜感（可在设置里关闭） */
+  body.no-tilt .tab, body.no-tilt .shell { transform: none !important; }
+
+  /* 空态 */
+  .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .empty .box {
+    background: var(--paper); border: 4px solid var(--ink); border-radius: var(--shape2);
+    box-shadow: var(--shadow6); padding: 22px 24px; max-width: 380px; text-align: center; transform: rotate(-1deg);
+  }
+  .empty .big svg { width: 58px; height: 58px; opacity: .35; }
+  .empty h2 { font-family: var(--comic); font-size: 19px; font-weight: 900; margin: 10px 0 8px; }
+  .empty p { font-weight: 700; color: rgba(26, 26, 26, .6); line-height: 1.65; font-size: 12.5px; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="shell">
+      <div class="tabbar" id="tabbar"></div>
+      <div class="stage" id="stage"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SVG_HEAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">';
+  var ICON_BOX = SVG_HEAD + '<path d="m3 7 9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>';
+  var ICON_PLUS = SVG_HEAD + '<path d="M12 5v14M5 12h14"/></svg>';
+  var ICON_CLOSE = SVG_HEAD + '<path d="M18 6 6 18M6 6l12 12"/></svg>';
+  var SELF_ID = 'doodle-panel-shell';
+  var LS_TABS = 'doodle-panel-shell.tabs';
+  var LS_ACTIVE = 'doodle-panel-shell.active';
+
+  function sendTo(win, msg) {
+    try { if (win) win.postMessage(msg, '*'); } catch (e) { /* 目标帧已卸载 */ }
+  }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  /* ---------- 宿主桥（本插件自身对宿主的调用） ---------- */
+  var seq = 0;
+  function callAction(actionId, payload) {
+    return new Promise(function (resolve, reject) {
+      var id = ++seq;
+      function onMsg(e) {
+        var m = e.data;
+        if (m && m.type === 'callActionResult' && m.id === id) {
+          window.removeEventListener('message', onMsg);
+          if (m.ok) resolve(m.data); else reject(new Error(m.error || 'callAction 失败'));
+        }
+      }
+      window.addEventListener('message', onMsg);
+      window.parent.postMessage({ type: 'callAction', id: id, actionId: actionId, payload: payload || {} }, '*');
+    });
+  }
+  function jsonFetch(url) {
+    return fetch(url).then(function (r) {
+      return r.text().then(function (t) {
+        var d = null;
+        try { d = t ? JSON.parse(t) : null; } catch (e) { /* 非 JSON */ }
+        if (!r.ok) throw new Error((d && (d.detail || d.message)) || ('HTTP ' + r.status));
+        return d;
+      });
+    });
+  }
+
+  /* ---------- 状态 ---------- */
+  var panels = [];          // 全部可用的 panel 区域插件
+  var openTabs = [];        // 已打开的标签页（持久化）
+  var selected = '';        // 当前激活标签
+  var children = {};        // pluginId -> { view, iframe }
+  var hostCovered = false;  // 宿主设置中心/弹窗/下拉出现时为 true
+  var hasStored = false;    // 是否已有本地偏好（用于首次默认全开）
+
+  /* ---------- 子插件中继 ----------
+     本插件本身就是宿主里的一个 iframe；它内部再挂各面板插件的 iframe。因此子插件的
+     window.parent 是本容器，而不是宿主。这里做双向中继：
+       ｜ 子 → 本容器 → 宿主：callAction（换 id 后转发，记录回包去向）
+       ｜ 宿主 → 本容器 → 子：callActionResult 按 id 回投原帧；event/configApply 广播 */
+  var relaySeq = 0;
+  var relayPending = {};   // relayId -> { win, id, actionId, payload }
+  var lastEvents = {};     // eventName -> data：给晚加载的子帧补推最近一次宿主事件
+
+  function relayCallAction(actionId, payload, childWin, origId) {
+    var p = payload || {};
+    // 坐标补偿：宿主只按「直接发消息的那层 iframe」在本容器文档中的位置换算坐标，
+    // 而这里发消息的是本容器内再嵌一层的子插件 iframe，需补上该子帧相对本容器的偏移，
+    // 否则内置浏览器（browser.bounds）会整体错位。
+    if (actionId === 'browser.bounds' && payload && typeof payload.x === 'number') {
+      var rec = null;
+      Object.keys(children).forEach(function (k) { if (children[k].iframe.contentWindow === childWin) rec = children[k]; });
+      if (rec) {
+        var r = rec.iframe.getBoundingClientRect();
+        if (r.width > 0) p = Object.assign({}, payload, { x: r.left + payload.x, y: r.top + (Number(payload.y) || 0) });
+      }
+    }
+    var rid = 'r' + (++relaySeq);
+    relayPending[rid] = { win: childWin, id: origId, actionId: actionId, payload: p };
+    window.parent.postMessage({ type: 'callAction', id: rid, actionId: actionId, payload: p }, '*');
+  }
+
+  // 拉取某子插件的配置并下发（子帧不在宿主的 frameByPluginId 里，收不到宿主的 configApply）
+  function pushChildConfig(pid) {
+    var rec = children[pid];
+    if (!rec || !rec.iframe.contentWindow) return;
+    callAction('config.get', { plugin_id: pid }).then(function (cfg) {
+      sendTo(rec.iframe.contentWindow, { type: 'configApply', config: cfg || {} });
+    }).catch(function () { /* 读取失败：子插件用自己的默认值 */ });
+  }
+
+  // 组装发给某个子帧的宿主事件：host.nativeCover 需按「该子帧是否为当前激活标签」逐个换算，
+  // 否则隐藏的非激活标签（内置浏览器等持有原生 WebContentsView 的插件）不会收起自己的视图。
+  function eventFor(pid, name, data) {
+    if (name === 'host.nativeCover') {
+      return { type: 'event', event: name, data: { covered: hostCovered || pid !== selected } };
+    }
+    return { type: 'event', event: name, data: data };
+  }
+  function broadcastEvent(name, data) {
+    Object.keys(children).forEach(function (pid) {
+      sendTo(children[pid].iframe.contentWindow, eventFor(pid, name, data));
+    });
+  }
+
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object') return;
+
+    if (m.type === 'callAction') {           // 来自子面板插件：上行转发
+      relayCallAction(m.actionId, m.payload, e.source, m.id);
+      return;
+    }
+    if (m.type === 'callActionResult') {     // 来自宿主：按 id 回投子帧
+      var rec = relayPending[m.id];
+      if (!rec) return;                      // 不是中继回包（本插件自身调用的回包由其 onMsg 处理）
+      delete relayPending[m.id];
+      sendTo(rec.win, { type: 'callActionResult', id: rec.id, ok: m.ok, data: m.data, error: m.error });
+      // 子插件改了自身配置：宿主已落盘，这里重新拉取并下发（否则改动无法热生效）
+      if (rec.actionId === 'config.set') pushChildConfig((rec.payload || {}).plugin_id);
+      return;
+    }
+    if (m.type === 'configApply') {          // 宿主对本容器的配置
+      applyConfig(m.config);
+      return;
+    }
+    if (m.type === 'event') {                // 宿主事件：本容器处理 + 广播给全部子帧
+      if (m.event !== 'host.unmount') lastEvents[m.event] = m.data || {};
+      if (m.event === 'host.nativeCover') hostCovered = !!(m.data && m.data.covered);
+      // 宿主要求在本容器里打开网页（聊天里的链接）：先切到自带内置浏览器的那个面板，
+      // 再把 browser.openUrl 原样广播下去，由其在自己的标签页内打开。
+      if (m.event === 'browser.openUrl') openUrlPanel();
+      broadcastEvent(m.event, m.data);
+      if (m.event === 'config.updated') pushChildConfig((m.data || {}).plugin_id);
+    }
+  });
+
+  /* ---------- 本容器配置 ---------- */
+  var config = { show_desc: true, tilt: true };
+  function applyConfig(c) {
+    config = Object.assign({}, config, c || {});
+    document.body.classList.toggle('no-tilt', !config.tilt);
+    buildTabs();   // 图标/说明是否作为悬停提示会随配置变化
+  }
+  callAction('config.get', { plugin_id: SELF_ID }).then(applyConfig).catch(function () {});
+
+  /* ---------- 标签页偏好（本地持久化，替代宿主原生面板容器的 __panelTabs__） ---------- */
+  function loadPrefs() {
+    var raw = null;
+    try { raw = localStorage.getItem(LS_TABS); } catch (e) { raw = null; }
+    hasStored = raw != null;
+    try { openTabs = raw ? (JSON.parse(raw) || []) : []; } catch (e) { openTabs = []; }
+    if (!Array.isArray(openTabs)) openTabs = [];
+    try { selected = localStorage.getItem(LS_ACTIVE) || ''; } catch (e) { selected = ''; }
+  }
+  function savePrefs() {
+    try {
+      localStorage.setItem(LS_TABS, JSON.stringify(openTabs));
+      localStorage.setItem(LS_ACTIVE, selected || '');
+    } catch (e) { /* 忽略持久化失败 */ }
+  }
+
+  /* ---------- 数据：读取全部 panel 区域插件 ---------- */
+  function panelById(id) {
+    for (var i = 0; i < panels.length; i++) { if (panels[i].id === id) return panels[i]; }
+    return null;
+  }
+  function load() {
+    return jsonFetch('/api/webmin/manifest?t=' + Date.now())
+      .then(function (m) {
+        var list = (m && Array.isArray(m.plugins)) ? m.plugins : [];
+        // rail.hidden 按插件 id 记录「已在设置里关闭」：这类插件不再进容器
+        var hidden = (m && m.rail && m.rail.hidden) || {};
+        panels = list.filter(function (p) {
+          return p && p.id !== SELF_ID && p.slotDef && p.slotDef.type === 'panel' && !hidden[p.id];
+        });
+        var ids = panels.map(function (p) { return p.id; });
+        // 首次使用：默认把全部面板插件开成标签页；之后按用户上次的开关恢复
+        if (!hasStored) openTabs = ids.slice();
+        openTabs = openTabs.filter(function (id) { return ids.indexOf(id) >= 0; });
+        if (openTabs.indexOf(selected) < 0) selected = openTabs[0] || '';
+        savePrefs();
+        render();
+      })
+      .catch(function () { panels = []; openTabs = []; selected = ''; render(); });
+  }
+
+  /* ---------- 渲染 ---------- */
+  function iconOf(p) {
+    var ic = p.icon;
+    if (ic && typeof ic === 'string' && ic.indexOf('<svg') >= 0) return ic;
+    return ICON_BOX;   // 内置插件可能用图标名，退回通用盒子图标
+  }
+
+  var addMenu = null;
+  function closeAddMenu() {
+    if (addMenu && addMenu.parentNode) addMenu.parentNode.removeChild(addMenu);
+    addMenu = null;
+  }
+  function toggleAddMenu(anchor) {
+    if (addMenu) { closeAddMenu(); return; }
+    addMenu = el('div', 'addmenu');
+    panels.forEach(function (p) {
+      var it = el('button', 'additem' + (openTabs.indexOf(p.id) >= 0 ? ' on' : ''));
+      var ic = el('span', 'ico'); ic.innerHTML = iconOf(p);
+      it.appendChild(ic);
+      it.appendChild(el('span', 'nm', p.name || p.id));
+      if (openTabs.indexOf(p.id) >= 0) it.appendChild(el('span', 'tick', '✓'));
+      it.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        closeAddMenu();
+        selectTab(p.id);   // 新标签的挂载由 selectTab 统一负责
+      });
+      addMenu.appendChild(it);
+    });
+    if (!panels.length) addMenu.appendChild(el('div', 'addempty', '没有可用的面板插件'));
+    document.body.appendChild(addMenu);
+    var r = anchor.getBoundingClientRect();
+    addMenu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - addMenu.offsetWidth - 8)) + 'px';
+    addMenu.style.top = (r.bottom + 6) + 'px';
+  }
+  document.addEventListener('click', function () { closeAddMenu(); });
+
+  function buildTabs() {
+    var tabbar = document.getElementById('tabbar');
+    tabbar.innerHTML = '';
+    openTabs.forEach(function (id) {
+      var p = panelById(id);
+      if (!p) return;
+      var b = el('div', 'tab' + (id === selected ? ' on' : ''));
+      var ic = el('span', 'ico'); ic.innerHTML = iconOf(p);
+      b.appendChild(ic);
+      b.appendChild(el('span', 'nm', p.name || p.id));
+      if (config.show_desc && p.description) b.title = p.description;
+      var x = el('button', 'tabx');
+      x.innerHTML = ICON_CLOSE;
+      x.title = '关闭标签页';
+      x.addEventListener('click', function (ev) { ev.stopPropagation(); closeTab(id); });
+      b.appendChild(x);
+      b.addEventListener('click', function () { selectTab(id); });
+      tabbar.appendChild(b);
+    });
+    var add = el('button', 'addbtn');
+    add.title = '新建标签页';
+    add.innerHTML = ICON_PLUS;
+    add.addEventListener('click', function (ev) { ev.stopPropagation(); toggleAddMenu(add); });
+    tabbar.appendChild(add);
+  }
+
+  function render() {
+    closeAddMenu();
+    var stage = document.getElementById('stage');
+    // 卸载已关闭标签的视图与帧
+    Object.keys(children).forEach(function (pid) {
+      if (openTabs.indexOf(pid) >= 0) return;
+      var rec = children[pid];
+      sendTo(rec.iframe.contentWindow, { type: 'event', event: 'host.unmount', data: {} });
+      if (rec.view.parentNode) rec.view.parentNode.removeChild(rec.view);
+      delete children[pid];
+    });
+    if (!openTabs.length) {
+      stage.innerHTML = '';
+      var emp = el('div', 'empty');
+      var box = el('div', 'box');
+      var big = el('div', 'big'); big.innerHTML = ICON_BOX;
+      box.appendChild(big);
+      box.appendChild(el('h2', null, '还没有打开的标签页'));
+      box.appendChild(el('p', null, '点击标签条末尾的 + 号，选择要打开的面板插件。'));
+      emp.appendChild(box);
+      stage.appendChild(emp);
+      buildTabs();
+      return;
+    }
+    if (stage.querySelector('.empty')) stage.innerHTML = '';
+    openTabs.forEach(function (id) { var p = panelById(id); if (p) mountChild(p); });
+    buildTabs();
+    syncVisible();
+  }
+  function mountChild(p) {
+    if (children[p.id]) return children[p.id];
+    var stage = document.getElementById('stage');
+    if (stage.querySelector('.empty')) stage.innerHTML = '';
+    var view = el('div', 'view');
+    view.dataset.pid = p.id;
+    var frame = el('div', 'frame');
+    var iframe = document.createElement('iframe');
+    iframe.setAttribute('tabindex', '-1');
+    iframe.src = '/api/webmin/plugin/' + encodeURIComponent(p.id) + '/' +
+      String(p.entry || 'index.html').split('/').map(encodeURIComponent).join('/');
+    iframe.title = p.name || p.id;
+    frame.appendChild(iframe);
+    view.appendChild(frame);
+    stage.appendChild(view);
+    var rec = { view: view, iframe: iframe };
+    children[p.id] = rec;
+    iframe.addEventListener('load', function () {
+      pushChildConfig(p.id);   // 子帧刚就绪：补投其配置
+      // 补投最近一次宿主事件（子帧挂载晚于宿主广播时会错过）
+      Object.keys(lastEvents).forEach(function (name) {
+        sendTo(iframe.contentWindow, eventFor(p.id, name, lastEvents[name]));
+      });
+    });
+    return rec;
+  }
+  // 显隐切换：隐藏的非激活标签必须显式通知——其原生 WebContentsView 绘制在 DOM 之上，
+  // display:none 不会触发子帧内部的 ResizeObserver，必须靠 host.nativeCover 主动收起。
+  function syncVisible() {
+    Object.keys(children).forEach(function (pid) {
+      var on = pid === selected;
+      children[pid].view.classList.toggle('on', on);
+      sendTo(children[pid].iframe.contentWindow, eventFor(pid, 'host.nativeCover', null));
+    });
+  }
+  function selectTab(pid) {
+    var added = openTabs.indexOf(pid) < 0;
+    if (added) openTabs.push(pid);
+    selected = pid;
+    savePrefs();
+    // 新开的标签必须先挂载 iframe，否则只会切到一片空白
+    if (added) { render(); return; }
+    buildTabs();
+    syncVisible();
+  }
+  function closeTab(id) {
+    var i = openTabs.indexOf(id);
+    if (i < 0) return;
+    openTabs.splice(i, 1);
+    if (selected === id) selected = openTabs[i] || openTabs[i - 1] || '';
+    savePrefs();
+    render();
+  }
+  // 聊天里的网页链接：切到自带内置浏览器的面板并（必要时）新开该标签
+  function openUrlPanel() {
+    var target = '';
+    panels.forEach(function (p) { if (!target && p.openUrl) target = p.id; });
+    if (!target) return;
+    var added = openTabs.indexOf(target) < 0;
+    if (added) { openTabs.push(target); savePrefs(); }
+    if (added || target !== selected) {
+      selected = target;
+      savePrefs();
+      render();
+    }
+  }
+
+  loadPrefs();
+  load();
+})();
+</script>
+</body>
+</html>

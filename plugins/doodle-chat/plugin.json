@@ -1,0 +1,17 @@
+{
+  "id": "doodle-chat",
+  "name": "涂鸦会话",
+  "description": "手绘涂鸦风格的会话面板：照搬完整模式 ChatPage 的聊天框与消息气泡排版（用户气泡右对齐、助手气泡带头像标签、思考/工具气泡内联，底部为手写输入框与发送按钮）。",
+  "description-en": "Hand-drawn doodle chat panel for the session area: reproduces the complete-mode ChatPage layout with right-aligned user bubbles, assistant bubbles carrying an avatar label, inline reasoning/tool bubbles, and a handwritten input box with a send button at the bottom.",
+  "icon": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M21 12a8.5 8.5 0 0 1-8.5 8.5H8l-4 2 1.4-4.2A8.5 8.5 0 1 1 21 12Z'/><path d='M9 11h6M9 14.5h4'/></svg>",
+  "slot": { "area": "session" },
+  "entry": "index.html",
+  "image": "",
+  "root": "user",
+  "dependency": [],
+  "configSchema": [
+    { "key": "greeting", "label": "空态问候语", "type": "text", "default": "Hi，我是 PurrCat！选个会话开始吧～" },
+    { "key": "show_reasoning", "label": "展示思考过程", "type": "switch", "default": true },
+    { "key": "show_tool_calls", "label": "展示工具调用", "type": "switch", "default": true }
+  ]
+}

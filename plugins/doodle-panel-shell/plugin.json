@@ -1,0 +1,16 @@
+{
+  "id": "doodle-panel-shell",
+  "name": "涂鸦面板容器",
+  "description": "手绘涂鸦风格的面板容器（入驻 panel-container 区域）：顶部为涂鸦标签条（自动收纳全部 panel 区域插件），下方展台为每个面板插件各驻留一个独立 iframe（切换仅显隐、不重载），并负责把子插件与宿主之间的消息双向中继。",
+  "description-en": "Hand-drawn doodle panel container that lives in the panel-container area: a doodle tab strip hosts every panel-area plugin, each rendered in its own persistent iframe (show/hide only, never reloaded), and relays messages between child plugins and the host.",
+  "icon": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4.5' width='18' height='15' rx='3.5'/><path d='M3 9h18'/><path d='M6.5 7h.01M9.5 7h.01'/></svg>",
+  "slot": { "area": "panel-container" },
+  "entry": "index.html",
+  "image": "",
+  "root": "user",
+  "dependency": [],
+  "configSchema": [
+    { "key": "show_desc", "label": "标签悬停显示说明", "type": "switch", "default": true },
+    { "key": "tilt", "label": "手绘倾斜感", "type": "switch", "default": true }
+  ]
+}

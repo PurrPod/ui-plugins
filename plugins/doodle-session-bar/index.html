@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>涂鸦会话列表</title>
+<style>
+  /* 手绘涂鸦配色（照搬完整模式 tailwind 的 cream/ink/terracotta 及辅助色） */
+  :root {
+    --cream: #FAF8F5;
+    --ink: #1A1A1A;
+    --terracotta: #D47A5A;
+    --paper: #FFFFFF;
+    --sand: #E8E5DF;
+    --dim: #8a8578;
+    --yellow: #EBCB8B;
+    --green: #a3be8c;
+    --sky: #88c0d0;
+    --red: #bf616a;
+    --orange: #d08770;
+    --comic: "Comic Sans MS", "Segoe Print", "Bradley Hand", cursive;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --shape1: 255px 15px 225px 15px / 15px 225px 15px 255px;
+    --shape2: 15px 225px 15px 255px / 255px 15px 225px 15px;
+    --shape3: 225px 15px 255px 15px / 15px 255px 15px 225px;
+    --shadow3: 3px 3px 0 0 rgba(26, 26, 26, 1);
+    --shadow2: 2px 2px 0 0 rgba(26, 26, 26, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: transparent; }
+  html, body { height: 100%; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(26, 26, 26, .22); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(26, 26, 26, .38); }
+  /* body 的背景会被上传到画布、且无视圆角 → 四角会露出方框；背景一律画在 .app 上 */
+  html, body { background: transparent; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+    color: var(--ink);
+  }
+  /* 手绘框直接充当整个区域的容器：不再套一层圆角框 */
+  .app {
+    position: relative;
+    height: 100%; display: flex; flex-direction: column;
+    padding: 12px 10px 10px;
+    border: 4px solid var(--ink);
+    border-radius: var(--shape2);
+    overflow: hidden;
+    /* 奶油底（网点属于 app 背景，帧内不再绘制） */
+    background-color: #fdfaf5;
+  }
+
+  /* ---------- 顶部操作条（无标题/图标）：悬浮在右上角，不再单独占一整行 ---------- */
+  .head { position: absolute; top: 10px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 4px; }
+  .head .acts { display: flex; align-items: center; gap: 4px; }
+  .hbtn {
+    width: 27px; height: 27px; flex: none; display: flex; align-items: center; justify-content: center;
+    background: var(--paper); border: 2px solid var(--ink); border-radius: var(--shape3);
+    box-shadow: var(--shadow2); color: var(--ink); cursor: pointer;
+    transition: transform .12s, background .12s;
+  }
+  .hbtn:hover { background: var(--yellow); transform: translateY(-2px); }
+  .hbtn svg { width: 14px; height: 14px; }
+
+  /* ---------- 合并后的统一列表 ---------- */
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 2px 6px; }
+  /* 首个分组标题行给右上角悬浮按钮让出横向空间，避免与其重叠 */
+  .scroll > .sec:first-child { padding-right: 66px; }
+  .sec { display: flex; align-items: center; gap: 6px; margin: 6px 4px 8px; cursor: pointer; user-select: none; }
+  .sec:hover .st { background: var(--terracotta); }
+  .sec .caret { flex: none; font-size: 9px; line-height: 1; color: var(--ink); opacity: .7; }
+  .sec .bar { flex: 1; height: 3px; background: rgba(26, 26, 26, .16); border-radius: 999px; }
+  .sec .st {
+    font-family: var(--comic); font-size: 12px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase;
+    background: var(--ink); color: var(--paper); padding: 2px 9px; border-radius: var(--shape3);
+    transition: background .12s;
+  }
+  .sec .cnt {
+    min-width: 18px; height: 18px; padding: 0 5px; display: flex; align-items: center; justify-content: center;
+    font-family: var(--comic); font-size: 11px; font-weight: 900;
+    background: var(--yellow); color: var(--ink); border: 2px solid var(--ink); border-radius: 999px;
+  }
+
+  /* 统一卡片：会话卡 / 审批卡共用同一套手绘外观 */
+  .card {
+    position: relative; width: 100%; margin-bottom: 9px; padding: 10px 12px;
+    background: var(--paper); border: 3px solid var(--ink); border-radius: var(--shape2);
+    box-shadow: var(--shadow3); cursor: pointer;
+    transition: transform .12s, background .12s;
+  }
+  .card:nth-child(even) { border-radius: var(--shape1); transform: rotate(.4deg); }
+  .card:nth-child(3n) { border-radius: var(--shape3); transform: rotate(-.4deg); }
+  .card:hover { transform: translateY(-2px); }
+  .card.active { background: var(--yellow); }
+  .card.req { background: var(--paper); cursor: default; }
+  .card.req:hover { transform: none; }
+
+  .row1 { display: flex; align-items: center; gap: 6px; }
+  .name { flex: 1; min-width: 0; font-size: 13px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .time { margin-top: 3px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+  .acts { flex: none; display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .12s; }
+  .card:hover .acts, .card.editing .acts { opacity: 1; }
+  .ico {
+    width: 23px; height: 23px; flex: none; display: flex; align-items: center; justify-content: center;
+    background: var(--cream); border: 2px solid var(--ink); border-radius: var(--shape3);
+    box-shadow: var(--shadow2); color: var(--ink); cursor: pointer; padding: 0;
+    transition: background .12s, transform .12s;
+  }
+  .ico:hover { background: var(--sky); transform: translateY(-1px); }
+  .ico.danger:hover { background: var(--red); color: var(--paper); }
+  .ico svg { width: 13px; height: 13px; }
+
+  .rn-input {
+    width: 100%; font: inherit; font-size: 13px; font-weight: 800; color: var(--ink);
+    background: var(--cream); border: 2px solid var(--ink); border-radius: var(--shape3);
+    padding: 3px 8px; outline: none;
+  }
+  .confirm { display: flex; align-items: center; gap: 6px; }
+  .confirm .msg { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; color: var(--red); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cbtn {
+    flex: none; font: inherit; font-family: var(--comic); font-size: 11px; font-weight: 900;
+    padding: 3px 10px; cursor: pointer; background: var(--paper);
+    border: 2px solid var(--ink); border-radius: var(--shape3); box-shadow: var(--shadow2); color: var(--ink);
+  }
+  .cbtn:hover { background: var(--sand); }
+  .cbtn.danger { background: var(--red); color: var(--paper); }
+  .cbtn.danger:hover { filter: brightness(1.06); }
+
+  /* 审批卡内部 */
+  .chip {
+    flex: none; font-family: var(--comic); font-size: 10px; font-weight: 900; letter-spacing: .5px;
+    padding: 2px 8px; border: 2px solid var(--ink); border-radius: 999px; background: var(--yellow); color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;
+  }
+  .chip.dep { background: var(--orange); color: var(--paper); }
+  .xbtn { margin-left: auto; }
+  .target { margin-top: 6px; font-size: 12.5px; font-weight: 800; line-height: 1.4; word-break: break-word; }
+  .reason-btn {
+    margin-top: 6px; align-self: flex-start; font: inherit; font-family: var(--comic); font-size: 11px; font-weight: 900;
+    color: var(--terracotta); background: none; border: none; cursor: pointer; padding: 0;
+  }
+  .reason-btn:hover { text-decoration: underline; }
+  .reason {
+    margin-top: 6px; padding: 8px 10px; font-size: 11.5px; line-height: 1.55; color: var(--ink);
+    background: var(--cream); border: 2px solid var(--ink); border-radius: var(--shape3);
+    white-space: pre-wrap; word-break: break-word; opacity: .92;
+  }
+  .fb {
+    width: 100%; margin-top: 7px; font: inherit; font-size: 11.5px; color: var(--ink);
+    background: var(--cream); border: 2px solid var(--ink); border-radius: var(--shape2);
+    padding: 6px 9px; outline: none;
+  }
+  .fb::placeholder { color: var(--dim); }
+  .racts { display: flex; gap: 6px; margin-top: 8px; }
+  .rbtn {
+    flex: 1; font: inherit; font-family: var(--comic); font-size: 12px; font-weight: 900;
+    padding: 5px 0; cursor: pointer; border: 2px solid var(--ink); border-radius: var(--shape1);
+    box-shadow: var(--shadow2); background: var(--paper); color: var(--ink);
+    transition: transform .1s, background .12s;
+  }
+  .rbtn:hover { transform: translateY(-1px); }
+  .rbtn.ok { background: var(--ink); color: var(--paper); }
+  .rbtn.ok:hover { background: var(--terracotta); color: var(--ink); }
+  .rbtn.no:hover { background: var(--sand); }
+
+  .empty {
+    margin: 10px 4px; padding: 16px 10px; text-align: center; font-size: 12px; font-weight: 700; color: var(--dim);
+    border: 3px dashed rgba(26, 26, 26, .3); border-radius: var(--shape2);
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="app">
+  <div class="head">
+    <div class="acts">
+      <button class="hbtn" id="refreshBtn" title="刷新">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+      </button>
+      <button class="hbtn" id="newBtn" title="新建会话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="scroll" id="scroll"></div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SVG_HEAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">';
+  var ICON_PENCIL = SVG_HEAD + '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  var ICON_TRASH = SVG_HEAD + '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+  var ICON_X = SVG_HEAD + '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+
+  /* ---------- 宿主桥 ---------- */
+  var seq = 0;
+  function callAction(actionId, payload) {
+    return new Promise(function (resolve, reject) {
+      var id = ++seq;
+      function onMsg(e) {
+        var m = e.data;
+        if (m && m.type === 'callActionResult' && m.id === id) {
+          window.removeEventListener('message', onMsg);
+          if (m.ok) resolve(m.data); else reject(new Error(m.error || 'callAction 失败'));
+        }
+      }
+      window.addEventListener('message', onMsg);
+      window.parent.postMessage({ type: 'callAction', id: id, actionId: actionId, payload: payload || {} }, '*');
+    });
+  }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  var scrollEl = document.getElementById('scroll');
+  var sessions = [];
+  var requests = [];
+  var activeId = '';
+  var editingId = '', editingVal = '', confirmingId = '';
+  var expandedReasons = {};
+  var feedbacks = {};
+  var collapsed = { req: false, ses: false };
+  var config = { opacity: 0.92, show_time: true };
+
+  function applyConfig(c) {
+    config = Object.assign({}, config, c || {});
+    var o = Math.max(0, Math.min(1, typeof config.opacity === 'number' ? config.opacity : 0.92));
+    // 底色画在 .app 上：画在 body 上会被上传到画布并忽略圆角，四角露出方框
+    var frame = document.querySelector('.app');
+    if (frame) frame.style.backgroundColor = 'rgba(253,250,245,' + o.toFixed(2) + ')';
+    render();
+  }
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'configApply') applyConfig(m.config);
+    else if (m.type === 'event' && m.event === 'config.updated') {
+      callAction('config.get', { plugin_id: 'doodle-session-bar' }).then(applyConfig).catch(function () {});
+    } else if (m.type === 'event' && m.event === 'requests.updated') {
+      loadRequests();
+    }
+  });
+  callAction('config.get', { plugin_id: 'doodle-session-bar' }).then(applyConfig).catch(function () {});
+
+  /* ---------- 会话 ---------- */
+  function findSession(id) {
+    for (var i = 0; i < sessions.length; i++) if (sessions[i].id === id) return sessions[i];
+    return null;
+  }
+  function commitRename(id) {
+    if (editingId !== id) return;
+    editingId = '';
+    var val = String(editingVal || '').trim();
+    var cur = findSession(id);
+    if (!val || (cur && val === (cur.alias || ''))) { render(); return; }
+    callAction('session.rename', { session_id: id, alias: val })
+      .then(function () { load(); }).catch(function () { render(); });
+  }
+  function doDelete(id) {
+    confirmingId = '';
+    callAction('session.delete', { session_id: id })
+      .then(function () { load(); }).catch(function () { render(); });
+  }
+  function iconBtn(cls, title, svg, onClick) {
+    var b = el('button', 'ico' + (cls ? ' ' + cls : ''));
+    b.title = title;
+    b.innerHTML = svg;
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); onClick(); });
+    return b;
+  }
+
+  function sessionCard(s) {
+    var card = el('div', 'card' + (s.id === activeId ? ' active' : '') + (editingId === s.id ? ' editing' : ''));
+    card.addEventListener('click', function () {
+      callAction('session.switch', { session_id: s.id }).catch(function () {});
+    });
+
+    if (confirmingId === s.id) {
+      var bar = el('div', 'confirm');
+      bar.appendChild(el('span', 'msg', '删除「' + (s.alias || s.id) + '」？'));
+      var yes = el('button', 'cbtn danger', '删除');
+      yes.addEventListener('click', function (ev) { ev.stopPropagation(); doDelete(s.id); });
+      var no = el('button', 'cbtn', '取消');
+      no.addEventListener('click', function (ev) { ev.stopPropagation(); confirmingId = ''; render(); });
+      bar.appendChild(yes); bar.appendChild(no);
+      card.appendChild(bar);
+      return card;
+    }
+
+    var row1 = el('div', 'row1');
+    if (editingId === s.id) {
+      var inp = el('input', 'rn-input');
+      inp.value = editingVal;
+      inp.addEventListener('click', function (ev) { ev.stopPropagation(); });
+      inp.addEventListener('input', function () { editingVal = inp.value; });
+      inp.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); commitRename(s.id); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); editingId = ''; render(); }
+      });
+      inp.addEventListener('blur', function () { commitRename(s.id); });
+      row1.appendChild(inp);
+      setTimeout(function () { inp.focus(); inp.select(); }, 0);
+    } else {
+      row1.appendChild(el('span', 'name', s.alias || s.id));
+    }
+    var acts = el('div', 'acts');
+    acts.appendChild(iconBtn('', '重命名', ICON_PENCIL, function () {
+      editingId = s.id; editingVal = s.alias || ''; confirmingId = ''; render();
+    }));
+    acts.appendChild(iconBtn('danger', '删除', ICON_TRASH, function () {
+      confirmingId = s.id; editingId = ''; render();
+    }));
+    row1.appendChild(acts);
+    card.appendChild(row1);
+
+    if (config.show_time) card.appendChild(el('div', 'time', String(s.updated_at || '').slice(0, 16)));
+    return card;
+  }
+
+  /* ---------- 待审批 ---------- */
+  function resolveReq(id, approved, ignore) {
+    callAction('requests.resolve', {
+      request_id: id, approved: !!approved, ignore: !!ignore, feedback: String(feedbacks[id] || '')
+    }).then(function () { delete feedbacks[id]; loadRequests(); }).catch(function () {});
+  }
+
+  function requestCard(req) {
+    var isDep = req.type === 'dependency_check';
+    var card = el('div', 'card req');
+
+    var top = el('div', 'row1');
+    top.appendChild(el('span', 'chip' + (isDep ? ' dep' : ''), req.type || 'request'));
+    top.appendChild(iconBtn('xbtn', '静默忽略', ICON_X, function () { resolveReq(req.id, false, true); }));
+    card.appendChild(top);
+
+    card.appendChild(el('div', 'target', req.target || '(无标题)'));
+
+    if (req.reason) {
+      var rb = el('button', 'reason-btn', expandedReasons[req.id] ? '收起理由 ▲' : '查看理由 ▼');
+      rb.addEventListener('click', function () { expandedReasons[req.id] = !expandedReasons[req.id]; render(); });
+      card.appendChild(rb);
+      if (expandedReasons[req.id]) card.appendChild(el('div', 'reason', req.reason));
+    }
+
+    if (!isDep) {
+      var fb = el('input', 'fb');
+      fb.placeholder = '可选：给 Agent 的反馈';
+      fb.value = feedbacks[req.id] || '';
+      fb.addEventListener('input', function () { feedbacks[req.id] = fb.value; });
+      card.appendChild(fb);
+    }
+
+    var acts = el('div', 'racts');
+    if (isDep) {
+      var ack = el('button', 'rbtn ok', '知道了');
+      ack.addEventListener('click', function () { resolveReq(req.id, false, false); });
+      acts.appendChild(ack);
+    } else {
+      var ok = el('button', 'rbtn ok', '批准');
+      ok.addEventListener('click', function () { resolveReq(req.id, true, false); });
+      var no = el('button', 'rbtn no', '拒绝');
+      no.addEventListener('click', function () { resolveReq(req.id, false, false); });
+      acts.appendChild(ok); acts.appendChild(no);
+    }
+    card.appendChild(acts);
+    return card;
+  }
+
+  /* ---------- 渲染（会话与审批合并为同一套卡片列表，各段可折叠） ---------- */
+  function sectionHead(title, key, count) {
+    var sec = el('div', 'sec');
+    sec.appendChild(el('span', 'caret', collapsed[key] ? '▶' : '▼'));
+    sec.appendChild(el('span', 'st', title));
+    sec.appendChild(el('span', 'cnt', String(count)));
+    sec.appendChild(el('span', 'bar'));
+    sec.addEventListener('click', function () { collapsed[key] = !collapsed[key]; render(); });
+    return sec;
+  }
+  function renderSection(title, key, cards) {
+    scrollEl.appendChild(sectionHead(title, key, cards.length));
+    if (collapsed[key]) return;
+    var body = el('div', 'secbody');
+    cards.forEach(function (c) { body.appendChild(c); });
+    scrollEl.appendChild(body);
+  }
+
+  function render() {
+    var scrollTop = scrollEl.scrollTop;
+    scrollEl.innerHTML = '';
+
+    if (requests.length) renderSection('待审批', 'req', requests.map(requestCard));
+
+    renderSection('会话', 'ses', sessions.length
+      ? sessions.map(sessionCard)
+      : [el('div', 'empty', '暂无会话，点右上角 ＋ 新建')]);
+
+    scrollEl.scrollTop = scrollTop;
+  }
+
+  function load() {
+    return callAction('sessions.list')
+      .then(function (list) {
+        return callAction('state.get').then(function (st) {
+          activeId = (st && st.activeSessionId) || '';
+          sessions = Array.isArray(list) ? list : [];
+          if (editingId && !findSession(editingId)) editingId = '';
+          if (confirmingId && !findSession(confirmingId)) confirmingId = '';
+          render();
+        });
+      })
+      .catch(function () {});
+  }
+
+  var lastReqSig = null;
+  function reqSig(list) {
+    return list.map(function (r) { return r.id + ':' + (r.status || '') + ':' + (r.type || ''); }).join('|');
+  }
+  function loadRequests() {
+    return callAction('requests.list')
+      .then(function (list) {
+        requests = Array.isArray(list) ? list : [];
+        Object.keys(expandedReasons).forEach(function (k) {
+          if (!requests.some(function (r) { return r.id === k; })) { delete expandedReasons[k]; delete feedbacks[k]; }
+        });
+        var sig = reqSig(requests);
+        if (sig !== lastReqSig) { lastReqSig = sig; render(); }
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById('newBtn').addEventListener('click', function () {
+    callAction('sessions.new').then(function () { load(); }).catch(function () {});
+  });
+  document.getElementById('refreshBtn').addEventListener('click', function () {
+    load(); loadRequests();
+  });
+
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object' || m.type !== 'event') return;
+    if (m.event === 'session.switched' || m.event === 'conversation.updated') load();
+  });
+
+  load();
+  loadRequests();
+  setInterval(loadRequests, 3000);
+})();
+</script>
+</body>
+</html>
