@@ -64,8 +64,6 @@
     background: var(--green); border: 2px solid var(--ink); border-radius: var(--shape2);
     box-shadow: var(--shadow2); transform: rotate(2deg); white-space: nowrap;
   }
-  .idchip.empty { background: #C9DBB7; color: transparent; width: 120px; height: 22px; transform: rotate(-3deg); }
-
   /* ---------- 消息区 ---------- */
   .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 6px; display: flex; flex-direction: column; gap: 20px; }
   .row { display: flex; flex-direction: column; width: 100%; }
@@ -208,7 +206,7 @@
     display: none; flex: none; margin: 0 28px 10px; padding: 12px;
     background: var(--paper); border: 4px solid var(--ink); border-radius: var(--shape2); box-shadow: var(--shadow4);
   }
-  .refPanel.open { display: block; }
+  .refPanel.open { display: block; max-height: 62vh; overflow-y: auto; }
   .ref-pick { display: flex; gap: 12px; }
   .cats { flex: none; width: 116px; display: flex; flex-direction: column; gap: 6px; }
   .cat {
@@ -228,6 +226,39 @@
   .item:hover { background: var(--sand); }
   .item.sel { background: var(--terracotta); color: var(--paper); }
   .lb-empty { font-size: 12px; font-weight: 700; color: var(--dim); }
+
+  /* ---------- 自托管（心跳）：开关 + 间隔 + GOAL.md ---------- */
+  .sh { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  .sh-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sh-title { font-family: var(--comic); font-size: 13px; font-weight: 900; letter-spacing: 1px; }
+  .sh-switch { position: relative; display: inline-block; width: 46px; height: 26px; flex: none; }
+  .sh-switch input { opacity: 0; width: 0; height: 0; }
+  .sh-slider {
+    position: absolute; inset: 0; cursor: pointer; background: var(--sand);
+    border: 2px solid var(--ink); border-radius: 999px; box-shadow: var(--shadow2); transition: background .15s;
+  }
+  .sh-slider::before {
+    content: ''; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px;
+    background: var(--paper); border: 2px solid var(--ink); border-radius: 50%; transition: transform .15s;
+  }
+  .sh-switch input:checked + .sh-slider { background: var(--green); }
+  .sh-switch input:checked + .sh-slider::before { transform: translateX(20px); }
+  .sh-state { font-size: 12px; font-weight: 800; color: var(--dim); }
+  .sh-state.on { color: #4f7a3a; }
+  .sh-field { display: flex; flex-direction: column; gap: 4px; }
+  .sh-label { font-family: var(--comic); font-size: 12px; font-weight: 900; letter-spacing: .5px; }
+  .sh-interval, .sh-goal {
+    width: 100%; font: inherit; font-weight: 700; color: var(--ink); background: #FDF8F0;
+    border: 3px solid var(--ink); border-radius: var(--shape3); box-shadow: var(--shadow2);
+    padding: 8px 10px; outline: none;
+  }
+  .sh-interval { font-size: 14px; }
+  .sh-goal { flex: 1; min-height: 80px; resize: none; font-size: 13px; line-height: 1.5; overflow-y: auto; }
+  .sh-hint { font-size: 11px; font-weight: 700; color: var(--dim); }
+  .sh-msg { font-size: 12px; font-weight: 800; min-height: 16px; color: var(--terracotta); }
+  .sh-msg.err { color: var(--red); }
+  /* 自托管表单需要更高的右侧区域，避免条目区把表单裁掉 */
+  .items.sh-on { display: block; max-height: 300px; }
 
   /* 已选引用 chips */
   .quotes { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0 28px 8px; }
@@ -302,14 +333,6 @@
   }
   .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
-  /* ---------- 空态 ---------- */
-  .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
-  .empty .card {
-    background: var(--paper); border: 4px solid var(--ink); border-radius: var(--shape2); box-shadow: 6px 6px 0 0 rgba(26, 26, 26, 1);
-    padding: 26px 30px; max-width: 420px; transform: rotate(-1deg);
-  }
-  .empty .card h2 { font-family: var(--comic); font-size: 22px; font-weight: 900; margin-bottom: 8px; }
-  .empty .card p { font-weight: 700; color: rgba(26, 26, 26, .6); line-height: 1.7; font-size: 14px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -515,6 +538,7 @@
     sessionId: '',
     branch: 'main',
     readOnly: false,
+    draft: false,
     thinking: false,
     phase: 'thinking',   // thinking | processing
     liveReasoning: '',
@@ -524,18 +548,20 @@
 
   function setHeader() {
     if (state.sessionId) {
-      idchip.classList.remove('empty');
+      idchip.classList.remove('hidden');
       idchip.textContent = 'ID: ' + (state.sessionId.split('_')[1] || state.sessionId.slice(-8));
     } else {
-      idchip.classList.add('empty');
+      // 无会话时整块隐藏，不再留一条绿色空条
+      idchip.classList.add('hidden');
       idchip.textContent = '';
     }
-    var enabled = !!state.sessionId && !state.readOnly;
+    // 草稿态（刚点「新建会话」、尚未落盘）也允许输入，首条消息发送时才真正建会话
+    var enabled = !state.readOnly && (!!state.sessionId || state.draft);
     inputEl.disabled = !enabled;
-    inputEl.placeholder = state.readOnly ? '子分支只读视图' : (state.sessionId ? '输入消息，Enter 发送 / Shift+Enter 换行' : '选择会话后输入消息…');
+    inputEl.placeholder = state.readOnly ? '子分支只读视图' : (enabled ? '输入消息，Enter 发送 / Shift+Enter 换行' : '选择会话后输入消息…');
     refreshSend();
   }
-  function refreshSend() { sendBtn.disabled = !state.sessionId || state.readOnly || (!inputEl.value.trim() && !quotes.length); }
+  function refreshSend() { sendBtn.disabled = state.readOnly || (!state.sessionId && !state.draft) || (!inputEl.value.trim() && !quotes.length); }
 
   /* ---------- 引用（＋）：文件 / 文件夹 / Skill / MCP / Graph ---------- */
   var plusBtn = document.getElementById('plus');
@@ -575,7 +601,8 @@
     { t: 'folder', label: '＋ 文件夹', dialog: true },
     { t: 'skill', label: 'Skill' },
     { t: 'mcp', label: 'MCP' },
-    { t: 'graph', label: 'Graph' }
+    { t: 'graph', label: 'Graph' },
+    { t: 'selfhost', label: '自托管' }
   ];
   var activeCat = null;
   var catCache = {};
@@ -595,6 +622,7 @@
   }
   function showRight(title, items) {
     rName.textContent = title;
+    rItems.classList.remove('sh-on');
     rItems.innerHTML = '';
     if (!items || !items.length) {
       var e = document.createElement('div');
@@ -653,6 +681,7 @@
     });
   }
   function handleCatClick(c) {
+    if (c.t === 'selfhost') { openSelfHost(); return; }
     if (c.t === 'file') {
       callAction('dialog.files').then(function (r) {
         var p = pickPath(r);
@@ -676,15 +705,117 @@
       b.textContent = c.label;
       b.addEventListener('mouseenter', function () {
         setActiveCat(c.t);
-        if (c.dialog) showRight(c.label, []);
+        if (c.t === 'selfhost') openSelfHost();
+        else if (c.dialog) showRight(c.label, []);
         else openCat(c.t);
       });
       b.addEventListener('click', function () { handleCatClick(c); });
       catsEl.appendChild(b);
     });
   }
+  // ---------- 自托管（心跳）：开关 + 间隔 + GOAL.md ----------
+  // 唯一数据源为后端 /api/tools/heartbeat（读写 GOAL.md 与 heartbeat.json）。
+  // 规则：GOAL.md 非空才允许启动；关闭自托管自动清空 GOAL.md。
+  var SH_MIN = 60;
+  var shEls = null;
+  function shMsg(text, isErr) {
+    if (!shEls) return;
+    shEls.msg.textContent = text || '';
+    shEls.msg.classList.toggle('err', !!isErr);
+  }
+  function shSetState(active) {
+    if (!shEls) return;
+    shEls.toggle.checked = !!active;
+    shEls.state.textContent = active ? '运行中' : '已停止';
+    shEls.state.classList.toggle('on', !!active);
+  }
+  function shInterval() {
+    var n = parseInt(shEls.interval.value, 10);
+    if (!n || n < SH_MIN) n = SH_MIN;
+    shEls.interval.value = n;
+    return n;
+  }
+  function shSave(active, goal) {
+    return fetch('/api/tools/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interval: shInterval(), active: !!active, goal: goal || '' })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) throw new Error((d && d.detail) || ('HTTP ' + r.status));
+        return d;
+      });
+    });
+  }
+  function loadSelfHost() {
+    return fetch('/api/tools/heartbeat').then(function (r) { return r.json(); }).then(function (d) {
+      if (!shEls) return;
+      shEls.interval.value = (d && d.interval) || 1800;
+      shEls.goal.value = (d && d.goal) || '';
+      shSetState(!!(d && d.active));
+      shMsg('');
+    }).catch(function () { shMsg('读取自托管配置失败', true); });
+  }
+  function openSelfHost() {
+    setActiveCat('selfhost');
+    rName.textContent = '自托管';
+    rItems.classList.add('sh-on');   // 表单需要更高的右侧区域
+    rItems.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'sh';
+    wrap.innerHTML =
+      '<div class="sh-head"><span class="sh-title">自托管（心跳）</span>' +
+        '<label class="sh-switch"><input type="checkbox" id="shToggle"><span class="sh-slider"></span></label></div>' +
+      '<div class="sh-state" id="shState">已停止</div>' +
+      '<div class="sh-field"><span class="sh-label">心跳间隔（秒，最少 60）</span>' +
+        '<input class="sh-interval" id="shInterval" type="number" min="60" step="60" value="1800"></div>' +
+      '<div class="sh-field"><span class="sh-label">GOAL.md</span>' +
+        '<textarea class="sh-goal" id="shGoal" placeholder="写下本次自托管要持续追求的目标…"></textarea></div>' +
+      '<div class="sh-hint">必须填写 GOAL.md 才能启动；关闭自托管会自动清空 GOAL.md。</div>' +
+      '<div class="sh-msg" id="shMsg"></div>';
+    rItems.appendChild(wrap);
+    shEls = {
+      toggle: wrap.querySelector('#shToggle'),
+      interval: wrap.querySelector('#shInterval'),
+      goal: wrap.querySelector('#shGoal'),
+      state: wrap.querySelector('#shState'),
+      msg: wrap.querySelector('#shMsg')
+    };
+    shEls.toggle.addEventListener('change', function () {
+      var active = shEls.toggle.checked;
+      var goal = shEls.goal.value.trim();
+      if (active && !goal) {
+        shSetState(false);
+        shMsg('请先填写 GOAL.md 才能启动', true);
+        return;
+      }
+      shSave(active, active ? goal : '').then(function () {
+        if (!active) shEls.goal.value = '';   // 关闭后自动清空 GOAL.md
+        shSetState(active);
+        shMsg(active ? '自托管已启动' : '自托管已停止，GOAL.md 已清空');
+      }).catch(function (e) {
+        shSetState(!active);
+        shMsg(String((e && e.message) || e || '保存失败'), true);
+      });
+    });
+    shEls.interval.addEventListener('change', function () {
+      var active = shEls.toggle.checked;
+      shSave(active, active ? shEls.goal.value.trim() : '').then(function () {
+        shMsg('心跳间隔已更新为 ' + shEls.interval.value + ' 秒');
+      }).catch(function (e) { shMsg(String((e && e.message) || e), true); });
+    });
+    shEls.goal.addEventListener('change', function () {
+      if (!shEls.toggle.checked) return;   // 未启动时不落盘，保持 GOAL.md 为空
+      var goal = shEls.goal.value.trim();
+      if (!goal) { shMsg('GOAL.md 不能为空', true); return; }
+      shSave(true, goal).then(function () { shMsg('GOAL.md 已更新'); })
+        .catch(function (e) { shMsg(String((e && e.message) || e), true); });
+    });
+    loadSelfHost();
+  }
+
   function toggleRef(show) {
-    var open = show !== undefined ? !!show : !refPanelEl.classList.contains('open');
+    var open = show !== undefined ? !!show : !refPanel.classList.contains('open');
     refPanelEl.classList.toggle('open', open);
     plusBtn.classList.toggle('active', open);
     if (open) {
@@ -1017,14 +1148,10 @@
     return count ? row : null;
   }
 
+  // 空态不再展示欢迎卡片与说明文案，消息区保持留白
   function renderEmptyGreetingIfNeeded() {
     if (state.rows.length) return;
     msgsEl.innerHTML = '';
-    var e = document.createElement('div');
-    e.className = 'empty';
-    e.innerHTML = '<div class="card"><h2>' + esc(config.greeting || 'Hi～') + '</h2>'
-      + '<p>这里是符合完整模式排版的手绘会话面板：右侧是你的消息气泡，左侧是 PurrCat 的回复，思考与工具调用以可折叠卡片内联展示。</p></div>';
-    msgsEl.appendChild(e);
   }
 
   function renderHistory(rows) {
@@ -1040,8 +1167,6 @@
 
   // 本轮乐观消息（发送即渲染）
   function appendLocalUser(txt) {
-    var emptyEl = msgsEl.querySelector('.empty');
-    if (emptyEl) emptyEl.remove();
     var r = renderMessage({ role: 'user', content: JSON.stringify({ events: [{ type: 'user', content: txt }] }) });
     if (r) msgsEl.appendChild(r);
     msgsEl.scrollTop = msgsEl.scrollHeight;
@@ -1121,7 +1246,7 @@
   /* ---------- 发送 ---------- */
   function send() {
     var txt = inputEl.value.trim();
-    if ((!txt && !quotes.length) || !state.sessionId || state.readOnly) return;
+    if ((!txt && !quotes.length) || state.readOnly || (!state.sessionId && !state.draft)) return;
     var events = quotes.map(function (q) { return { type: q.type, content: q.content }; });
     if (txt) events.push({ type: 'user', content: txt });
     inputEl.value = '';
@@ -1151,6 +1276,8 @@
     var d = m.data || {};
     if (m.event === 'session.switched') {
       state.sessionId = d.session_id || '';
+      // 宿主只在草稿态（刚新建、尚未落盘）广播空 id，据此保持输入可用
+      state.draft = !state.sessionId;
       state.branch = 'main';
       state.readOnly = false;
       state.thinking = false; state.liveReasoning = ''; state.localBuffer = [];
@@ -1190,6 +1317,7 @@
     callAction('state.get').then(function (st) {
       state.sessionId = (st && st.activeSessionId) || '';
       state.branch = (st && st.activeBranchId) || 'main';
+      state.draft = !!(st && st.draft);
       state.readOnly = state.branch !== 'main';
       setHeader();
       loadHistory();

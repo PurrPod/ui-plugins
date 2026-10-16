@@ -39,7 +39,7 @@
   }
 
   /* 手绘容器直接充当整个区域的容器：无标题、无外边距 */
-  .app { height: 100%; display: flex; flex-direction: column; }
+  .app { position: relative; height: 100%; display: flex; flex-direction: column; }
 
   /* ---------- 容器外壳 ---------- */
   /* 区域容器本体：手绘框即整个区域，不再套一层圆角框 */
@@ -51,10 +51,11 @@
     border-radius: var(--shape2);
     overflow: hidden;
   }
-  /* 标签条：与面板之间不画分割线（原生面板容器同样无分割线，靠间距区分） */
+  /* 标签条：与面板之间不画分割线（原生面板容器同样无分割线，靠间距区分）；
+     右侧留出控制簇（加号 + 关闭）的横向空间，避免标签压到按钮上 */
   .tabbar {
     flex: none; display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
-    padding: 10px 12px;
+    padding: 10px 78px 10px 12px;
   }
   .tab {
     position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 190px;
@@ -77,14 +78,16 @@
   }
   .tab .tabx:hover { background: var(--red, #bf616a); color: var(--paper); }
 
-  /* + 号：与宿主原生面板容器的 wm-pp_add 同款「加号排在标签条末尾」 */
-  .addbtn {
+  /* 右上角控制簇：关闭（✕）在最右，加号排在它左侧；始终悬浮于区域右上角 */
+  .ctl { position: absolute; top: 12px; right: 12px; z-index: 6; display: flex; align-items: center; gap: 7px; }
+  .ctlbtn {
     width: 27px; height: 27px; flex: none; display: flex; align-items: center; justify-content: center;
     cursor: pointer; background: var(--paper); border: 3px solid var(--ink); border-radius: var(--shape3);
     box-shadow: var(--shadow2); color: var(--ink); transition: transform .12s, background .12s;
   }
-  .addbtn:hover { background: var(--yellow); transform: translateY(-2px); }
-  .addbtn svg { width: 15px; height: 15px; }
+  .ctlbtn:hover { background: var(--yellow); transform: translateY(-2px); }
+  .ctlbtn.close:hover { background: var(--red, #bf616a); color: var(--paper); }
+  .ctlbtn svg { width: 15px; height: 15px; }
 
   /* + 下拉：列出全部面板插件，已打开者高亮 */
   .addmenu {
@@ -124,23 +127,17 @@
 
   /* 手绘倾斜感（可在设置里关闭） */
   body.no-tilt .tab, body.no-tilt .shell { transform: none !important; }
-
-  /* 空态 */
-  .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .empty .box {
-    background: var(--paper); border: 4px solid var(--ink); border-radius: var(--shape2);
-    box-shadow: var(--shadow6); padding: 22px 24px; max-width: 380px; text-align: center; transform: rotate(-1deg);
-  }
-  .empty .big svg { width: 58px; height: 58px; opacity: .35; }
-  .empty h2 { font-family: var(--comic); font-size: 19px; font-weight: 900; margin: 10px 0 8px; }
-  .empty p { font-weight: 700; color: rgba(26, 26, 26, .6); line-height: 1.65; font-size: 12.5px; }
 </style>
 </head>
 <body>
   <div class="app">
-    <div class="shell">
+    <div class="shell" id="shell">
       <div class="tabbar" id="tabbar"></div>
       <div class="stage" id="stage"></div>
+    </div>
+    <div class="ctl">
+      <button class="ctlbtn" id="addBtn" title="新建标签页"></button>
+      <button class="ctlbtn close" id="closeBtn" title="关闭面板"></button>
     </div>
   </div>
 
@@ -388,11 +385,7 @@
       b.addEventListener('click', function () { selectTab(id); });
       tabbar.appendChild(b);
     });
-    var add = el('button', 'addbtn');
-    add.title = '新建标签页';
-    add.innerHTML = ICON_PLUS;
-    add.addEventListener('click', function (ev) { ev.stopPropagation(); toggleAddMenu(add); });
-    tabbar.appendChild(add);
+    // 加号 / 关闭按钮固定在右上角控制簇里（见下方 wiring），不再挂在标签条末尾
   }
 
   function render() {
@@ -407,19 +400,11 @@
       delete children[pid];
     });
     if (!openTabs.length) {
+      // 空态：手绘外壳保留，框内不放任何提示框，只留白（右上角控制簇常驻）
       stage.innerHTML = '';
-      var emp = el('div', 'empty');
-      var box = el('div', 'box');
-      var big = el('div', 'big'); big.innerHTML = ICON_BOX;
-      box.appendChild(big);
-      box.appendChild(el('h2', null, '还没有打开的标签页'));
-      box.appendChild(el('p', null, '点击标签条末尾的 + 号，选择要打开的面板插件。'));
-      emp.appendChild(box);
-      stage.appendChild(emp);
       buildTabs();
       return;
     }
-    if (stage.querySelector('.empty')) stage.innerHTML = '';
     openTabs.forEach(function (id) { var p = panelById(id); if (p) mountChild(p); });
     buildTabs();
     syncVisible();
@@ -427,7 +412,6 @@
   function mountChild(p) {
     if (children[p.id]) return children[p.id];
     var stage = document.getElementById('stage');
-    if (stage.querySelector('.empty')) stage.innerHTML = '';
     var view = el('div', 'view');
     view.dataset.pid = p.id;
     var frame = el('div', 'frame');
@@ -490,6 +474,18 @@
       render();
     }
   }
+
+  /* ---------- 右上角控制簇：加号（新建标签页）+ 关闭（关闭整个面板容器） ---------- */
+  var addBtnEl = document.getElementById('addBtn');
+  addBtnEl.innerHTML = ICON_PLUS;
+  addBtnEl.addEventListener('click', function (ev) { ev.stopPropagation(); toggleAddMenu(addBtnEl); });
+  var closeBtnEl = document.getElementById('closeBtn');
+  closeBtnEl.innerHTML = ICON_CLOSE;
+  closeBtnEl.addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    // 通用插槽原语：隐藏并记住本插件（等价于关闭面板容器），白条图标可重新启用
+    callAction('slot.hide').catch(function () {});
+  });
 
   loadPrefs();
   load();

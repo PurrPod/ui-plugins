@@ -51,22 +51,19 @@
     background-color: #fdfaf5;
   }
 
-  /* ---------- 顶部操作条（无标题/图标）：悬浮在右上角，不再单独占一整行 ---------- */
-  .head { position: absolute; top: 10px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 4px; }
-  .head .acts { display: flex; align-items: center; gap: 4px; }
-  .hbtn {
-    width: 27px; height: 27px; flex: none; display: flex; align-items: center; justify-content: center;
-    background: var(--paper); border: 2px solid var(--ink); border-radius: var(--shape3);
-    box-shadow: var(--shadow2); color: var(--ink); cursor: pointer;
+  /* ---------- 新建会话按钮：位于列表顶部、待审批分组之上 ---------- */
+  .newbtn {
+    width: 100%; margin: 6px 0 10px; padding: 9px 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: var(--comic); font-size: 13px; font-weight: 900; letter-spacing: 1.5px;
+    color: var(--ink); background: var(--yellow); border: 3px solid var(--ink);
+    border-radius: var(--shape3); box-shadow: var(--shadow3); cursor: pointer;
     transition: transform .12s, background .12s;
   }
-  .hbtn:hover { background: var(--yellow); transform: translateY(-2px); }
-  .hbtn svg { width: 14px; height: 14px; }
+  .newbtn:hover { background: var(--terracotta); transform: translateY(-2px); }
+  .newbtn svg { width: 16px; height: 16px; }
 
   /* ---------- 合并后的统一列表 ---------- */
   .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 2px 6px; }
-  /* 首个分组标题行给右上角悬浮按钮让出横向空间，避免与其重叠 */
-  .scroll > .sec:first-child { padding-right: 66px; }
   .sec { display: flex; align-items: center; gap: 6px; margin: 6px 4px 8px; cursor: pointer; user-select: none; }
   .sec:hover .st { background: var(--terracotta); }
   .sec .caret { flex: none; font-size: 9px; line-height: 1; color: var(--ink); opacity: .7; }
@@ -173,17 +170,6 @@
 </head>
 <body>
   <div class="app">
-  <div class="head">
-    <div class="acts">
-      <button class="hbtn" id="refreshBtn" title="刷新">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-      </button>
-      <button class="hbtn" id="newBtn" title="新建会话">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      </button>
-    </div>
-  </div>
-
   <div class="scroll" id="scroll"></div>
   </div>
 
@@ -195,6 +181,7 @@
   var ICON_PENCIL = SVG_HEAD + '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
   var ICON_TRASH = SVG_HEAD + '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
   var ICON_X = SVG_HEAD + '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  var ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
 
   /* ---------- 宿主桥 ---------- */
   var seq = 0;
@@ -383,23 +370,41 @@
     sec.addEventListener('click', function () { collapsed[key] = !collapsed[key]; render(); });
     return sec;
   }
-  function renderSection(title, key, cards) {
-    scrollEl.appendChild(sectionHead(title, key, cards.length));
+  function renderSection(title, key, cards, count) {
+    // 徽章数字用真实条目数，不能用渲染卡片数——空态那张占位卡片会被误算成 1
+    scrollEl.appendChild(sectionHead(title, key, count == null ? cards.length : count));
     if (collapsed[key]) return;
     var body = el('div', 'secbody');
     cards.forEach(function (c) { body.appendChild(c); });
     scrollEl.appendChild(body);
   }
 
+  // 新建会话按钮（图标 + 文案）：位于整个列表最上方、待审批分组之上
+  function newSessionBtn() {
+    var b = el('button', 'newbtn');
+    b.type = 'button';
+    b.innerHTML = ICON_PLUS + '<span>新建会话</span>';
+    b.addEventListener('click', function () {
+      callAction('sessions.new').then(function () { load(); }).catch(function () {});
+    });
+    return b;
+  }
+
   function render() {
     var scrollTop = scrollEl.scrollTop;
     scrollEl.innerHTML = '';
 
-    if (requests.length) renderSection('待审批', 'req', requests.map(requestCard));
+    scrollEl.appendChild(newSessionBtn());
+
+    // 待审批分组始终展示（即使为 0 条），便于用户随时确认「当前无待审批」，
+    // 而不是整组消失让人怀疑列表被裁掉
+    renderSection('待审批', 'req', requests.length
+      ? requests.map(requestCard)
+      : [el('div', 'empty', '暂无待审批')], requests.length);
 
     renderSection('会话', 'ses', sessions.length
       ? sessions.map(sessionCard)
-      : [el('div', 'empty', '暂无会话，点右上角 ＋ 新建')]);
+      : [el('div', 'empty', '暂无会话，点上方「新建会话」')], sessions.length);
 
     scrollEl.scrollTop = scrollTop;
   }
@@ -435,12 +440,7 @@
       .catch(function () {});
   }
 
-  document.getElementById('newBtn').addEventListener('click', function () {
-    callAction('sessions.new').then(function () { load(); }).catch(function () {});
-  });
-  document.getElementById('refreshBtn').addEventListener('click', function () {
-    load(); loadRequests();
-  });
+  // 新建会话按钮每次 render 重建，事件绑定在 newSessionBtn() 内；刷新按钮已移除
 
   window.addEventListener('message', function (e) {
     var m = e.data;
